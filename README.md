@@ -82,7 +82,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deploy to Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYOUR_USERNAME%2Fquestgen&env=GITHUB_ID,GITHUB_SECRET,NEXTAUTH_SECRET,UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=See%20README%20for%20setup%20instructions)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fsasler%2Fquestgen&env=GITHUB_ID,GITHUB_SECRET,NEXTAUTH_SECRET,UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=See%20README%20for%20setup%20instructions)
 
 **Environment variables to set in Vercel:**
 - `GITHUB_ID` — from your GitHub OAuth App

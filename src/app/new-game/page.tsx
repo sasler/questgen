@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { PanelFrame } from "@/components";
-import type { GameSize, GameSettings, GameGenerationRequest } from "@/types";
+import { loadSettings, toGameSettings } from "@/lib/settings";
+import type { GameSize, GameGenerationRequest } from "@/types";
 
 const SIZE_OPTIONS: {
   value: GameSize;
@@ -58,15 +59,7 @@ export default function NewGamePage() {
       setLoadingMsgIndex(0);
 
       try {
-        const stored = localStorage.getItem("questgen-settings");
-        const settings: GameSettings = stored
-          ? JSON.parse(stored)
-          : {
-              generationModel: "gpt-4o",
-              gameplayModel: "gpt-4o-mini",
-              responseLength: "moderate" as const,
-              provider: "copilot" as const,
-            };
+        const settings = loadSettings();
 
         const request: GameGenerationRequest = {
           description: description.trim(),
@@ -74,11 +67,10 @@ export default function NewGamePage() {
           genre: genre.trim() || undefined,
         };
 
-        const body: Record<string, unknown> = { request, settings };
+        const body: Record<string, unknown> = { request, settings: toGameSettings(settings) };
 
-        if (settings.provider === "byok" && settings.byokConfig) {
-          const keyStored = localStorage.getItem("questgen-byok-key");
-          if (keyStored) body.byokApiKey = keyStored;
+        if (settings.provider === "byok" && settings.byokApiKey) {
+          body.byokApiKey = settings.byokApiKey;
         }
 
         const res = await fetch("/api/game/new", {

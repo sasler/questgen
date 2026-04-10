@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { SETTINGS_STORAGE_KEY } from "@/lib/settings";
 
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -10,17 +11,17 @@ vi.mock("next/navigation", () => ({
 import NewGamePage from "./page";
 
 const validSettings = {
-  generationModel: "gpt-4o",
-  gameplayModel: "gpt-4o-mini",
-  responseLength: "moderate",
   provider: "copilot",
+  generationModel: "gpt-4.1",
+  gameplayModel: "gpt-4.1",
+  responseLength: "moderate",
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("fetch", vi.fn());
   localStorage.clear();
-  localStorage.setItem("questgen-settings", JSON.stringify(validSettings));
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(validSettings));
 });
 
 describe("NewGamePage", () => {

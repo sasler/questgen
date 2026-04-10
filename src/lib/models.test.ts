@@ -191,4 +191,27 @@ describe("getRecommendedModels", () => {
     // No gameplay-tagged model, falls back to first available
     expect(result.gameplay?.id).toBe("a");
   });
+
+  it("prefers gpt-4.1 for both purposes when no tags exist", () => {
+    const models: AIModelInfo[] = [
+      { id: "gpt-4o", name: "GPT-4o", provider: "openai" },
+      { id: "gpt-4.1", name: "GPT-4.1", provider: "openai" },
+      { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "openai" },
+    ];
+    const result = getRecommendedModels(models);
+
+    expect(result.generation?.id).toBe("gpt-4.1");
+    expect(result.gameplay?.id).toBe("gpt-4.1");
+  });
+
+  it("prefers gpt-4.1 over first model for missing purpose", () => {
+    const models: AIModelInfo[] = [
+      { id: "gpt-4o", name: "GPT-4o", provider: "openai", recommended: "generation" },
+      { id: "gpt-4.1", name: "GPT-4.1", provider: "openai" },
+    ];
+    const result = getRecommendedModels(models);
+
+    expect(result.generation?.id).toBe("gpt-4o");
+    expect(result.gameplay?.id).toBe("gpt-4.1");
+  });
 });

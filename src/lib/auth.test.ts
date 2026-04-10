@@ -25,6 +25,8 @@ describe("auth config", () => {
   });
 
   it("exports handlers, auth, signIn, signOut", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
     const authModule = await import("./auth");
     expect(authModule.handlers).toBeDefined();
     expect(authModule.handlers.GET).toBeDefined();
@@ -32,9 +34,12 @@ describe("auth config", () => {
     expect(authModule.auth).toBeDefined();
     expect(authModule.signIn).toBeDefined();
     expect(authModule.signOut).toBeDefined();
+    vi.unstubAllEnvs();
   });
 
   it("jwt callback stores access token from account", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
     const authModule = await import("./auth");
     // Extract the config passed to NextAuth
     const config = mockNextAuth.mock.calls[0][0];
@@ -49,9 +54,12 @@ describe("auth config", () => {
     const result = await jwtCallback({ token, account });
     expect(result.accessToken).toBe("gho_test_token_abc");
     expect(result.provider).toBe("github");
+    vi.unstubAllEnvs();
   });
 
   it("jwt callback preserves token when no account", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
     const authModule = await import("./auth");
     const config = mockNextAuth.mock.calls[0][0];
     const jwtCallback = config.callbacks.jwt;
@@ -65,9 +73,12 @@ describe("auth config", () => {
     const result = await jwtCallback({ token, account: null });
     expect(result.accessToken).toBe("existing_token");
     expect(result.provider).toBe("github");
+    vi.unstubAllEnvs();
   });
 
   it("session callback passes access token to session", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
     const authModule = await import("./auth");
     const config = mockNextAuth.mock.calls[0][0];
     const sessionCallback = config.callbacks.session;
@@ -77,6 +88,30 @@ describe("auth config", () => {
 
     const result = await sessionCallback({ session, token });
     expect(result.accessToken).toBe("gho_test_token_abc");
+    vi.unstubAllEnvs();
+  });
+
+  it("isAuthConfigured returns true when env vars set", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
+    const { isAuthConfigured } = await import("./auth");
+    expect(isAuthConfigured()).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
+  it("isAuthConfigured returns false when env vars missing", async () => {
+    delete process.env.GITHUB_ID;
+    delete process.env.GITHUB_SECRET;
+    const { isAuthConfigured } = await import("./auth");
+    expect(isAuthConfigured()).toBe(false);
+  });
+
+  it("auth() returns null when not configured", async () => {
+    delete process.env.GITHUB_ID;
+    delete process.env.GITHUB_SECRET;
+    const { auth } = await import("./auth");
+    const session = await auth();
+    expect(session).toBeNull();
   });
 });
 

@@ -8,27 +8,55 @@ import type {
   AIModelInfo,
 } from "./types";
 
-let clientInstance: CopilotClient | null = null;
+const MAX_CACHE_SIZE = 10;
+const clientCache = new Map<string, CopilotClient>();
 
-function getClient(config: AIProviderConfig): CopilotClient {
-  if (!clientInstance) {
-    const options: ConstructorParameters<typeof CopilotClient>[0] = {
-      autoStart: true,
-    };
-
-    if (config.mode === "copilot" && config.githubToken) {
-      options.githubToken = config.githubToken;
-      options.useLoggedInUser = false;
-    }
-
-    clientInstance = new CopilotClient(options);
+function getCacheKey(config: AIProviderConfig): string {
+  const parts: string[] = [config.mode];
+  if (config.mode === "copilot") {
+    parts.push(config.githubToken ?? "");
+  } else {
+    parts.push(config.byokType ?? "", config.byokBaseUrl ?? "", config.byokApiKey ?? "");
   }
-  return clientInstance;
+  return parts.join("\0");
 }
 
-/** @internal Reset singleton — exposed for testing only. */
+function getClient(config: AIProviderConfig): CopilotClient {
+  const key = getCacheKey(config);
+
+  const cached = clientCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  // Evict oldest entry if at capacity
+  if (clientCache.size >= MAX_CACHE_SIZE) {
+    const oldest = clientCache.keys().next().value!;
+    const evicted = clientCache.get(oldest);
+    try { evicted?.stop(); } catch { /* best-effort cleanup */ }
+    clientCache.delete(oldest);
+  }
+
+  const options: ConstructorParameters<typeof CopilotClient>[0] = {
+    autoStart: true,
+  };
+
+  if (config.mode === "copilot" && config.githubToken) {
+    options.githubToken = config.githubToken;
+    options.useLoggedInUser = false;
+  }
+
+  const client = new CopilotClient(options);
+  clientCache.set(key, client);
+  return client;
+}
+
+/** @internal Reset client cache — exposed for testing only. */
 export function _resetClientForTesting(): void {
-  clientInstance = null;
+  for (const client of clientCache.values()) {
+    try { client.stop(); } catch { /* best-effort */ }
+  }
+  clientCache.clear();
 }
 
 function buildSessionConfig(

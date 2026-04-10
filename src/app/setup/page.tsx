@@ -48,8 +48,10 @@ export default function SetupPage() {
     checkStatus();
   }, [checkStatus]);
 
-  const origin =
-    typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  const [origin, setOrigin] = useState("http://localhost:3000");
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
   const oauthUrl = `https://github.com/settings/applications/new?oauth_application[name]=QuestGen&oauth_application[url]=${encodeURIComponent(origin)}&oauth_application[callback_url]=${encodeURIComponent(origin + "/api/auth/callback/github")}`;
 
   return (

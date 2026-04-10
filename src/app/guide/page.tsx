@@ -183,6 +183,20 @@ export default function GuidePage() {
       {/* Back link */}
       <div className="text-center my-8">
         <Link
+          href="/setup"
+          className="text-[var(--terminal-amber)] underline hover:brightness-125 text-sm"
+        >
+          → First-Time Setup Wizard
+        </Link>
+        <span className="mx-3 text-[var(--terminal-dim)]">|</span>
+        <Link
+          href="/settings"
+          className="text-[var(--terminal-amber)] underline hover:brightness-125 text-sm"
+        >
+          ⚙ Settings
+        </Link>
+        <span className="mx-3 text-[var(--terminal-dim)]">|</span>
+        <Link
           href="/"
           className="text-[var(--terminal-amber)] underline hover:brightness-125 text-sm"
         >

@@ -11,6 +11,7 @@ import {
   RoomInfoPanel,
 } from "@/components";
 import { getAvailableExits } from "@/engine";
+import { loadSettings } from "@/lib/settings";
 import type {
   GameWorld,
   PlayerState,
@@ -106,9 +107,8 @@ export default function GamePage() {
       setIsLoading(true);
 
       try {
-        const byokApiKey = typeof window !== "undefined"
-          ? localStorage.getItem("byokApiKey") ?? undefined
-          : undefined;
+        const settings = loadSettings();
+        const byokApiKey = settings.provider === "byok" ? settings.byokApiKey : undefined;
 
         const res = await fetch(`/api/game/${gameId}/turn`, {
           method: "POST",

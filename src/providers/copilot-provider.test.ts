@@ -10,12 +10,16 @@ const mockCreateSession = vi.fn();
 const mockListModels = vi.fn();
 const mockStop = vi.fn().mockResolvedValue([]);
 
+// Track all constructed client instances and their constructor args
+const constructedClients: Array<{ instance: Record<string, unknown>; options: unknown }> = [];
+
 vi.mock("@github/copilot-sdk", () => {
-  const MockCopilotClient = function (this: Record<string, unknown>) {
+  const MockCopilotClient = function (this: Record<string, unknown>, opts?: unknown) {
     this.createSession = mockCreateSession;
     this.listModels = mockListModels;
     this.stop = mockStop;
-  } as unknown as { new (): unknown };
+    constructedClients.push({ instance: this, options: opts });
+  } as unknown as { new (opts?: unknown): unknown };
 
   return {
     CopilotClient: MockCopilotClient,
@@ -59,6 +63,7 @@ describe("CopilotProvider", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetClientForTesting();
+    constructedClients.length = 0;
     provider = new CopilotProvider();
   });
 
@@ -344,6 +349,112 @@ describe("CopilotProvider", () => {
       await expect(provider.listModels(copilotConfig)).rejects.toThrow(
         "rate limit",
       );
+    });
+  });
+
+  describe("client cache", () => {
+    it("reuses client for same config", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      await provider.generateCompletion("a", options, copilotConfig);
+      await provider.generateCompletion("b", options, copilotConfig);
+
+      expect(constructedClients).toHaveLength(1);
+    });
+
+    it("creates different clients for different github tokens", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      const userA: AIProviderConfig = { mode: "copilot", githubToken: "token-user-A" };
+      const userB: AIProviderConfig = { mode: "copilot", githubToken: "token-user-B" };
+
+      await provider.generateCompletion("a", options, userA);
+      await provider.generateCompletion("b", options, userB);
+
+      expect(constructedClients).toHaveLength(2);
+      expect(constructedClients[0].options).toEqual(
+        expect.objectContaining({ githubToken: "token-user-A" }),
+      );
+      expect(constructedClients[1].options).toEqual(
+        expect.objectContaining({ githubToken: "token-user-B" }),
+      );
+    });
+
+    it("creates different clients for different BYOK configs", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      const byokA: AIProviderConfig = {
+        mode: "byok",
+        byokType: "openai",
+        byokBaseUrl: "https://a.example.com",
+        byokApiKey: "key-a",
+      };
+      const byokB: AIProviderConfig = {
+        mode: "byok",
+        byokType: "openai",
+        byokBaseUrl: "https://b.example.com",
+        byokApiKey: "key-b",
+      };
+
+      await provider.generateCompletion("a", options, byokA);
+      await provider.generateCompletion("b", options, byokB);
+
+      expect(constructedClients).toHaveLength(2);
+    });
+
+    it("creates different clients for copilot vs byok mode", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      await provider.generateCompletion("a", options, copilotConfig);
+      await provider.generateCompletion("b", options, byokConfig);
+
+      expect(constructedClients).toHaveLength(2);
+    });
+
+    it("evicts oldest entry when cache exceeds max size", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      // Fill cache with 10 entries (max size)
+      for (let i = 0; i < 10; i++) {
+        const cfg: AIProviderConfig = { mode: "copilot", githubToken: `token-${i}` };
+        await provider.generateCompletion("x", options, cfg);
+      }
+      expect(constructedClients).toHaveLength(10);
+
+      // 11th entry should trigger eviction
+      const overflowConfig: AIProviderConfig = { mode: "copilot", githubToken: "token-overflow" };
+      await provider.generateCompletion("x", options, overflowConfig);
+      expect(constructedClients).toHaveLength(11);
+
+      // Re-requesting the first evicted config should create a NEW client
+      const firstConfig: AIProviderConfig = { mode: "copilot", githubToken: "token-0" };
+      await provider.generateCompletion("x", options, firstConfig);
+      expect(constructedClients).toHaveLength(12);
+    });
+
+    it("_resetClientForTesting clears the entire cache", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      await provider.generateCompletion("a", options, copilotConfig);
+      expect(constructedClients).toHaveLength(1);
+
+      _resetClientForTesting();
+      constructedClients.length = 0;
+
+      await provider.generateCompletion("b", options, copilotConfig);
+      expect(constructedClients).toHaveLength(1);
     });
   });
 });

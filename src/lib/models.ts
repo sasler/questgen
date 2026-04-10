@@ -7,11 +7,11 @@ export interface ModelListResult {
 }
 
 const OPENAI_MODELS: AIModelInfo[] = [
-  { id: "gpt-4.1", name: "GPT-4.1", provider: "openai", recommended: "generation" },
-  { id: "gpt-4.1-mini", name: "GPT-4.1 Mini", provider: "openai", recommended: "gameplay" },
-  { id: "gpt-4.1-nano", name: "GPT-4.1 Nano", provider: "openai", recommended: "gameplay" },
-  { id: "gpt-4o", name: "GPT-4o", provider: "openai", recommended: "generation" },
-  { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "openai", recommended: "gameplay" },
+  { id: "gpt-4.1", name: "GPT-4.1", provider: "openai" },
+  { id: "gpt-4.1-mini", name: "GPT-4.1 Mini", provider: "openai" },
+  { id: "gpt-4.1-nano", name: "GPT-4.1 Nano", provider: "openai" },
+  { id: "gpt-4o", name: "GPT-4o", provider: "openai" },
+  { id: "gpt-4o-mini", name: "GPT-4o Mini", provider: "openai" },
 ];
 
 const ANTHROPIC_MODELS: AIModelInfo[] = [
@@ -79,7 +79,9 @@ export async function listAvailableModels(
 export function getRecommendedModels(
   models: AIModelInfo[],
 ): { generation: AIModelInfo | null; gameplay: AIModelInfo | null } {
-  const generation = models.find((m) => m.recommended === "generation") ?? models[0] ?? null;
-  const gameplay = models.find((m) => m.recommended === "gameplay") ?? models[0] ?? null;
+  // Prefer gpt-4.1 for both if available
+  const gpt41 = models.find((m) => m.id === "gpt-4.1");
+  const generation = models.find((m) => m.recommended === "generation") ?? gpt41 ?? models[0] ?? null;
+  const gameplay = models.find((m) => m.recommended === "gameplay") ?? gpt41 ?? models[0] ?? null;
   return { generation, gameplay };
 }

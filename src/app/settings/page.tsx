@@ -4,43 +4,12 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { PanelFrame } from "@/components/PanelFrame";
 import type { AIModelInfo } from "@/providers/types";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface StoredSettings {
-  provider: "copilot" | "byok";
-  byokType?: "openai" | "azure" | "anthropic";
-  byokBaseUrl?: string;
-  byokApiKey?: string;
-  generationModel: string;
-  gameplayModel: string;
-  responseLength: "brief" | "moderate" | "detailed";
-}
-
-const STORAGE_KEY = "questgen-settings";
-
-const DEFAULT_SETTINGS: StoredSettings = {
-  provider: "copilot",
-  generationModel: "",
-  gameplayModel: "",
-  responseLength: "moderate",
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function loadSettings(): StoredSettings {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-  } catch {
-    /* ignore corrupt data */
-  }
-  return { ...DEFAULT_SETTINGS };
-}
+import {
+  type UserSettings,
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+} from "@/lib/settings";
 
 const inputClass =
   "w-full bg-[#0a0a0a] border border-[#1a3a1a] text-[#00ff41] font-mono text-sm px-3 py-2 " +
@@ -51,15 +20,28 @@ const selectClass =
   "focus:outline-none focus:border-[#00ff41] focus:ring-1 focus:ring-[#00ff41]";
 
 // ---------------------------------------------------------------------------
+// Connection status types
+// ---------------------------------------------------------------------------
+
+interface ConnectionStatus {
+  github: { connected: boolean; username?: string; avatar?: string | null };
+  copilot: { available: boolean; error?: string | null };
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<StoredSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [models, setModels] = useState<AIModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  // Connection status state
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
+  const [connectionLoading, setConnectionLoading] = useState(false);
 
   // Load persisted settings on mount
   useEffect(() => {
@@ -68,8 +50,30 @@ export default function SettingsPage() {
     setMounted(true);
   }, []);
 
+  // Fetch connection status
+  const fetchConnectionStatus = useCallback(async () => {
+    setConnectionLoading(true);
+    try {
+      const res = await fetch("/api/copilot/status");
+      if (res.ok) {
+        const data: ConnectionStatus = await res.json();
+        setConnectionStatus(data);
+      }
+    } catch {
+      // silently ignore — status is informational
+    } finally {
+      setConnectionLoading(false);
+    }
+  }, []);
+
+  // Fetch connection status on mount
+  useEffect(() => {
+    if (!mounted) return;
+    fetchConnectionStatus();
+  }, [mounted, fetchConnectionStatus]);
+
   // Fetch models when provider config changes
-  const fetchModels = useCallback(async (s: StoredSettings) => {
+  const fetchModels = useCallback(async (s: UserSettings) => {
     setModelsLoading(true);
     try {
       const params = new URLSearchParams({ provider: s.provider });
@@ -110,13 +114,13 @@ export default function SettingsPage() {
   }, [mounted, settings.provider, settings.byokType, fetchModels]);
 
   // Convenience updater
-  const update = <K extends keyof StoredSettings>(key: K, value: StoredSettings[K]) => {
+  const update = <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     setSaved(false);
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleSave = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    saveSettings(settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -142,6 +146,86 @@ export default function SettingsPage() {
           </Link>
         </div>
 
+        {/* ── Connection Status ──────────────────────────────────────── */}
+        <PanelFrame title="Connection Status">
+          <div className="space-y-2">
+            {connectionLoading && !connectionStatus ? (
+              <p className="text-[#4a6741] animate-pulse text-xs">Checking connection…</p>
+            ) : (
+              <>
+                {/* GitHub status */}
+                <div className="flex items-center gap-2 text-sm">
+                  <span
+                    data-testid="github-status-dot"
+                    className={`inline-block w-2 h-2 rounded-full ${
+                      connectionStatus?.github.connected ? "bg-[#00ff41]" : "bg-[#ff4444]"
+                    }`}
+                  />
+                  <span className="text-[#ffb000]">GitHub:</span>
+                  {connectionStatus?.github.connected ? (
+                    <span>
+                      Connected as{" "}
+                      <span className="text-[#00ff41] font-bold">
+                        {connectionStatus.github.username}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-[#ff4444]">Not connected</span>
+                  )}
+                </div>
+
+                {/* Copilot status */}
+                <div className="flex items-center gap-2 text-sm">
+                  <span
+                    data-testid="copilot-status-dot"
+                    className={`inline-block w-2 h-2 rounded-full ${
+                      connectionStatus?.copilot.available ? "bg-[#00ff41]" : "bg-[#ff4444]"
+                    }`}
+                  />
+                  <span className="text-[#ffb000]">Copilot:</span>
+                  {connectionStatus?.copilot.available ? (
+                    <span>Available ✓</span>
+                  ) : (
+                    <span className="text-[#ff4444]">Not available</span>
+                  )}
+                </div>
+
+                {/* Copilot error message */}
+                {connectionStatus?.copilot.error && (
+                  <p className="text-[#ff4444] text-xs ml-4">
+                    {connectionStatus.copilot.error}
+                  </p>
+                )}
+
+                {/* Guide link when Copilot is unavailable */}
+                {connectionStatus && !connectionStatus.copilot.available && (
+                  <p className="text-xs ml-4">
+                    <Link href="/guide" className="text-[#ffb000] underline hover:text-[#00ff41]">
+                      How to get Copilot →
+                    </Link>
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* Test Connection button */}
+            <div className="pt-1">
+              <button
+                onClick={fetchConnectionStatus}
+                disabled={connectionLoading}
+                className={
+                  "px-3 py-1 text-xs border cursor-pointer " +
+                  "bg-[#0a0a0a] border-[#1a3a1a] text-[#4a6741] " +
+                  "hover:border-[#00ff41] hover:text-[#00ff41] transition-colors " +
+                  "disabled:opacity-50 disabled:cursor-not-allowed"
+                }
+              >
+                {connectionLoading ? "Testing…" : "[ TEST CONNECTION ]"}
+              </button>
+            </div>
+          </div>
+        </PanelFrame>
+
         {/* ── Provider Selection ─────────────────────────────────────── */}
         <PanelFrame title="AI Provider">
           <fieldset className="space-y-3">
@@ -163,15 +247,7 @@ export default function SettingsPage() {
 
             {settings.provider === "copilot" && (
               <p className="text-[#4a6741] text-xs ml-6">
-                Uses your GitHub Copilot subscription.{" "}
-                <a
-                  href="https://github.com/features/copilot"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#ffb000] underline"
-                >
-                  Sign up for Copilot →
-                </a>
+                Uses your GitHub Copilot subscription. Models loaded from your account.
               </p>
             )}
 
@@ -181,9 +257,7 @@ export default function SettingsPage() {
                 name="provider"
                 value="byok"
                 checked={settings.provider === "byok"}
-                onChange={() =>
-                  update("provider", "byok")
-                }
+                onChange={() => update("provider", "byok")}
                 className="accent-[#00ff41]"
               />
               <span>Bring Your Own Key (BYOK)</span>
@@ -237,7 +311,7 @@ export default function SettingsPage() {
                   className={inputClass}
                 />
                 <p className="text-[#4a6741] text-xs mt-1">
-                  Stored locally in your browser only — never sent to our servers.
+                  Stored in your browser only — never sent to our servers.
                 </p>
               </div>
             </div>

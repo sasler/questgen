@@ -33,6 +33,6 @@ export async function GET() {
     secret: status.secret,
     redis: status.redis,
     redisConnected,
-    allConfigured: status.auth && status.secret && status.redis,
+    allConfigured: status.auth && status.secret && redisConnected,
   });
 }

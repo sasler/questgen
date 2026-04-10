@@ -14,8 +14,8 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  // Allow the home/landing page
-  if (pathname === "/") {
+  // Allow public pages
+  if (pathname === "/" || pathname === "/guide") {
     return NextResponse.next();
   }
 

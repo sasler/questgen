@@ -1,0 +1,285 @@
+import type {
+  GameWorld,
+  PlayerState,
+  TurnEntry,
+  GameSettings,
+  AITurnResponse,
+} from "@/types";
+import { AITurnResponseSchema } from "@/types";
+import { applyAction, checkWinCondition, buildLocalContext } from "@/engine";
+import type { ActionResult } from "@/engine/game-engine";
+import { buildTurnPrompt, GAMEPLAY_SYSTEM_PROMPT } from "@/prompts";
+import { getAIProvider } from "@/providers";
+import type { IAIProvider, AIProviderConfig } from "@/providers/types";
+import { GameStorage } from "@/lib/storage";
+import type { IGameStorage } from "@/lib/storage";
+
+// ── Types ───────────────────────────────────────────────────────────
+
+export interface TurnResult {
+  success: boolean;
+  narrative: string;
+  actionResults: ActionResult[];
+  newPlayerState: PlayerState;
+  worldChanged: boolean;
+  gameWon: boolean;
+  error?: string;
+}
+
+const FALLBACK_NARRATIVE =
+  "The universe momentarily lost track of what was happening. Try again.";
+
+const WORLD_MUTATING_ACTIONS = new Set([
+  "unlock",
+  "solve_puzzle",
+  "reveal_connection",
+  "npc_state_change",
+]);
+
+// ── JSON extraction ─────────────────────────────────────────────────
+
+function extractJSON(raw: string): string | null {
+  // Strip markdown code fences
+  const stripped = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "");
+
+  const first = stripped.indexOf("{");
+  const last = stripped.lastIndexOf("}");
+  if (first === -1 || last === -1 || last <= first) return null;
+
+  return stripped.substring(first, last + 1);
+}
+
+function parseAIResponse(raw: string): AITurnResponse | null {
+  const json = extractJSON(raw);
+  if (!json) return null;
+
+  try {
+    const parsed = JSON.parse(json);
+    const validated = AITurnResponseSchema.safeParse(parsed);
+    return validated.success ? validated.data : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Error result helper ─────────────────────────────────────────────
+
+function errorResult(
+  message: string,
+  player?: PlayerState,
+): TurnResult {
+  return {
+    success: false,
+    narrative: "",
+    actionResults: [],
+    newPlayerState: player ?? {
+      currentRoomId: "",
+      inventory: [],
+      visitedRooms: [],
+      flags: {},
+      turnCount: 0,
+      stateVersion: 0,
+    },
+    worldChanged: false,
+    gameWon: false,
+    error: message,
+  };
+}
+
+// ── Main pipeline ───────────────────────────────────────────────────
+
+export async function processTurn(
+  gameId: string,
+  playerInput: string,
+  turnId: string,
+  aiConfig: AIProviderConfig,
+  settings: GameSettings,
+  storage?: IGameStorage,
+  provider?: IAIProvider,
+): Promise<TurnResult> {
+  const store = storage ?? new GameStorage();
+  const ai = provider ?? getAIProvider();
+
+  // ── 1. Load state ───────────────────────────────────────────────
+  let world: GameWorld;
+  let player: PlayerState;
+  let history: TurnEntry[];
+
+  try {
+    const [loadedWorld, loadedPlayer, loadedHistory, metadata] = await Promise.all([
+      store.getWorld(gameId),
+      store.getPlayerState(gameId),
+      store.getHistory(gameId),
+      store.getMetadata(gameId),
+    ]);
+
+    if (!loadedWorld) return errorResult("Game world not found");
+    if (!loadedPlayer) return errorResult("Player state not found");
+    if (!metadata) return errorResult("Game metadata not found");
+
+    world = loadedWorld;
+    player = loadedPlayer;
+    history = loadedHistory;
+  } catch (err) {
+    return errorResult(
+      err instanceof Error ? err.message : "Failed to load game state",
+    );
+  }
+
+  const originalVersion = player.stateVersion;
+
+  // ── 2. Build local context ──────────────────────────────────────
+
+  const localContext = buildLocalContext(world, player, history);
+
+  // ── 3. Build prompt ─────────────────────────────────────────────
+
+  const prompt = buildTurnPrompt({
+    playerInput,
+    currentRoom: localContext.currentRoom,
+    nearbyRooms: localContext.nearbyRooms,
+    inventory: localContext.inventoryItems,
+    roomItems: localContext.roomItems,
+    roomNPCs: localContext.roomNPCs,
+    activePuzzles: localContext.activePuzzles,
+    recentHistory: localContext.recentHistory,
+    responseLength: settings.responseLength,
+    playerFlags: localContext.playerFlags,
+  });
+
+  // ── 4. Call AI ──────────────────────────────────────────────────
+
+  let rawResponse: string;
+  try {
+    const completion = await ai.generateCompletion(
+      prompt,
+      {
+        model: settings.gameplayModel,
+        systemMessage: GAMEPLAY_SYSTEM_PROMPT,
+      },
+      aiConfig,
+    );
+    rawResponse = completion.content;
+  } catch (err) {
+    return errorResult(
+      err instanceof Error ? err.message : "AI provider error",
+      player,
+    );
+  }
+
+  // ── 5. Parse AI response ────────────────────────────────────────
+
+  const aiResponse = parseAIResponse(rawResponse);
+
+  if (!aiResponse) {
+    // Return fallback — no state changes
+    return {
+      success: true,
+      narrative: FALLBACK_NARRATIVE,
+      actionResults: [],
+      newPlayerState: player,
+      worldChanged: false,
+      gameWon: false,
+    };
+  }
+
+  // ── 6. Validate and apply actions ───────────────────────────────
+
+  const actionResults: ActionResult[] = [];
+  let currentWorld = world;
+  let currentPlayer = player;
+  let worldChanged = false;
+
+  for (const proposedAction of aiResponse.proposedActions) {
+    const { result, world: newWorld, player: newPlayer } = applyAction(
+      proposedAction,
+      currentWorld,
+      currentPlayer,
+    );
+
+    actionResults.push(result);
+
+    if (result.success) {
+      currentWorld = newWorld;
+      currentPlayer = newPlayer;
+
+      if (WORLD_MUTATING_ACTIONS.has(proposedAction.type)) {
+        worldChanged = true;
+      }
+    }
+  }
+
+  // ── 7. Check win condition ──────────────────────────────────────
+
+  const gameWon = checkWinCondition(currentWorld, currentPlayer);
+
+  // ── 8. Save state ───────────────────────────────────────────────
+
+  try {
+    // Optimistic locking on player state
+    const updated = await store.updatePlayerState(
+      gameId,
+      currentPlayer,
+      originalVersion,
+    );
+
+    if (!updated) {
+      return errorResult(
+        "State conflict: another request modified this game. Please retry.",
+        player,
+      );
+    }
+
+    // Save world if mutated
+    if (worldChanged) {
+      await store.saveWorld(gameId, currentWorld);
+    }
+
+    // Append history — player entry then narrator entry
+    const now = Date.now();
+
+    const playerEntry: TurnEntry = {
+      turnId,
+      role: "player",
+      text: playerInput,
+      timestamp: now,
+    };
+
+    const narratorEntry: TurnEntry = {
+      turnId,
+      role: "narrator",
+      text: aiResponse.narrative,
+      timestamp: now,
+    };
+
+    await store.appendHistory(gameId, playerEntry);
+    await store.appendHistory(gameId, narratorEntry);
+
+    // Update metadata
+    const metadata = await store.getMetadata(gameId);
+    if (metadata) {
+      await store.saveMetadata(gameId, {
+        ...metadata,
+        lastPlayedAt: now,
+        turnCount: metadata.turnCount + 1,
+        completed: gameWon || metadata.completed,
+      });
+    }
+  } catch (err) {
+    return errorResult(
+      err instanceof Error ? err.message : "Failed to save game state",
+      currentPlayer,
+    );
+  }
+
+  // ── 9. Return result ────────────────────────────────────────────
+
+  return {
+    success: true,
+    narrative: aiResponse.narrative,
+    actionResults,
+    newPlayerState: currentPlayer,
+    worldChanged,
+    gameWon,
+  };
+}

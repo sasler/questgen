@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #00ff41;
+  --terminal-green: #00ff41;
+  --terminal-green-light: #33ff66;
+  --terminal-amber: #ffb000;
+  --terminal-dim: #4a6741;
+  --terminal-border: #1a3a1a;
+  --terminal-panel: #0d1a0d;
+  --terminal-error: #ff4444;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-mono: "IBM Plex Mono", "Fira Code", "Cascadia Code", "Consolas",
+    var(--font-geist-mono), monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-mono);
+}
+
+/* CRT scanline overlay */
+.scanline-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+}
+
+/* Glow text for headings */
+.glow-text {
+  text-shadow:
+    0 0 4px var(--terminal-green),
+    0 0 8px var(--terminal-green);
+}
+
+.glow-text-amber {
+  text-shadow:
+    0 0 4px var(--terminal-amber),
+    0 0 8px var(--terminal-amber);
+}
+
+/* Custom thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--terminal-border) var(--background);
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--terminal-border);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--terminal-dim);
 }

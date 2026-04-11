@@ -1,5 +1,5 @@
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
-import type { CopilotSession, AssistantMessageEvent } from "@github/copilot-sdk";
+import type { AssistantMessageEvent } from "@github/copilot-sdk";
 import type {
   IAIProvider,
   AIProviderConfig,
@@ -8,37 +8,28 @@ import type {
   AIModelInfo,
 } from "./types";
 
-const MAX_CACHE_SIZE = 10;
-const clientCache = new Map<string, CopilotClient>();
+/**
+ * Pool of active CLI clients keyed by config.
+ *
+ * Storing a Promise (rather than a resolved client) means concurrent callers
+ * for the same key share a single `start()` invocation — only one CLI process
+ * is ever spawned per config identity. Without this guard, concurrent requests
+ * would each spawn their own process tree (launcher + app.js), leading to
+ * runaway process accumulation and OOM on Windows where `TerminateProcess()`
+ * kills only the launcher, not its child.
+ */
+const clientPool = new Map<string, Promise<CopilotClient>>();
 
-function getCacheKey(config: AIProviderConfig): string {
-  const parts: string[] = [config.mode];
+function getConfigKey(config: AIProviderConfig): string {
   if (config.mode === "copilot") {
-    parts.push(config.githubToken ?? "");
-  } else {
-    parts.push(config.byokType ?? "", config.byokBaseUrl ?? "", config.byokApiKey ?? "");
+    return `copilot:${config.githubToken ?? ""}`;
   }
-  return parts.join("\0");
+  return `byok:${config.byokType ?? ""}:${config.byokBaseUrl ?? ""}:${config.byokApiKey ?? ""}`;
 }
 
-function getClient(config: AIProviderConfig): CopilotClient {
-  const key = getCacheKey(config);
-
-  const cached = clientCache.get(key);
-  if (cached) {
-    return cached;
-  }
-
-  // Evict oldest entry if at capacity
-  if (clientCache.size >= MAX_CACHE_SIZE) {
-    const oldest = clientCache.keys().next().value!;
-    const evicted = clientCache.get(oldest);
-    try { evicted?.stop(); } catch { /* best-effort cleanup */ }
-    clientCache.delete(oldest);
-  }
-
+function createClient(config: AIProviderConfig): CopilotClient {
   const options: ConstructorParameters<typeof CopilotClient>[0] = {
-    autoStart: true,
+    autoStart: false,
   };
 
   if (config.mode === "copilot" && config.githubToken) {
@@ -46,17 +37,53 @@ function getClient(config: AIProviderConfig): CopilotClient {
     options.useLoggedInUser = false;
   }
 
-  const client = new CopilotClient(options);
-  clientCache.set(key, client);
-  return client;
+  return new CopilotClient(options);
 }
 
-/** @internal Reset client cache — exposed for testing only. */
+function getOrCreateClient(config: AIProviderConfig): Promise<CopilotClient> {
+  const key = getConfigKey(config);
+  const cached = clientPool.get(key);
+  if (cached) return cached;
+
+  const promise = (async () => {
+    const client = createClient(config);
+    await client.start();
+    return client;
+  })().catch((err) => {
+    if (clientPool.get(key) === promise) clientPool.delete(key);
+    throw err;
+  });
+
+  clientPool.set(key, promise);
+  return promise;
+}
+
+/** @internal Reset client pool — exposed for testing only. */
 export function _resetClientForTesting(): void {
-  for (const client of clientCache.values()) {
-    try { client.stop(); } catch { /* best-effort */ }
+  clientPool.clear();
+}
+
+async function withClient<T>(
+  config: AIProviderConfig,
+  operation: (client: CopilotClient) => Promise<T>,
+): Promise<T> {
+  const key = getConfigKey(config);
+  const poolEntry = getOrCreateClient(config);
+  // If start() failed, pool entry is already cleaned up; error propagates here.
+  const client = await poolEntry;
+
+  try {
+    return await operation(client);
+  } catch (error) {
+    // Evict and best-effort stop the client on any operation error so the next
+    // caller gets a fresh process. Only evict if this entry is still current
+    // (a concurrent recovery may have already replaced it).
+    if (clientPool.get(key) === poolEntry) {
+      clientPool.delete(key);
+      client.stop().catch(() => {});
+    }
+    throw error;
   }
-  clientCache.clear();
 }
 
 function buildSessionConfig(
@@ -86,23 +113,24 @@ export class CopilotProvider implements IAIProvider {
     options: AICompletionOptions,
     config: AIProviderConfig,
   ): Promise<AICompletionResult> {
-    const client = getClient(config);
-    const session = await client.createSession(buildSessionConfig(options, config));
+    return withClient(config, async (client) => {
+      const session = await client.createSession(buildSessionConfig(options, config));
 
-    try {
-      const response = await session.sendAndWait({ prompt });
+      try {
+        const response = await session.sendAndWait({ prompt });
 
-      if (!response) {
-        throw new Error("No response received from the AI model");
+        if (!response) {
+          throw new Error("No response received from the AI model");
+        }
+
+        return {
+          content: response.data.content,
+          model: options.model,
+        };
+      } finally {
+        await session.disconnect();
       }
-
-      return {
-        content: response.data.content,
-        model: options.model,
-      };
-    } finally {
-      await session.disconnect();
-    }
+    });
   }
 
   async streamCompletion(
@@ -111,42 +139,44 @@ export class CopilotProvider implements IAIProvider {
     config: AIProviderConfig,
     onChunk: (chunk: string) => void,
   ): Promise<AICompletionResult> {
-    const client = getClient(config);
-    const session = await client.createSession(buildSessionConfig(options, config));
+    return withClient(config, async (client) => {
+      const session = await client.createSession(buildSessionConfig(options, config));
 
-    try {
-      session.on("assistant.message", (event: AssistantMessageEvent) => {
-        onChunk(event.data.content);
-      });
+      try {
+        session.on("assistant.message", (event: AssistantMessageEvent) => {
+          onChunk(event.data.content);
+        });
 
-      const response = await session.sendAndWait({ prompt });
+        const response = await session.sendAndWait({ prompt });
 
-      if (!response) {
-        throw new Error("No response received from the AI model");
+        if (!response) {
+          throw new Error("No response received from the AI model");
+        }
+
+        return {
+          content: response.data.content,
+          model: options.model,
+        };
+      } finally {
+        await session.disconnect();
       }
-
-      return {
-        content: response.data.content,
-        model: options.model,
-      };
-    } finally {
-      await session.disconnect();
-    }
+    });
   }
 
   async listModels(config: AIProviderConfig): Promise<AIModelInfo[]> {
-    const client = getClient(config);
-    const models = await client.listModels();
+    return withClient(config, async (client) => {
+      const models = await client.listModels();
 
-    const providerName =
-      config.mode === "byok" && config.byokType
-        ? config.byokType
-        : "copilot";
+      const providerName =
+        config.mode === "byok" && config.byokType
+          ? config.byokType
+          : "copilot";
 
-    return models.map((m) => ({
-      id: m.id,
-      name: m.name,
-      provider: providerName,
-    }));
+      return models.map((m) => ({
+        id: m.id,
+        name: m.name,
+        provider: providerName,
+      }));
+    });
   }
 }

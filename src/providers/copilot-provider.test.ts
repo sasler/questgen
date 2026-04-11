@@ -8,6 +8,7 @@ const mockSend = vi.fn().mockResolvedValue("msg-1");
 const mockOn = vi.fn();
 const mockCreateSession = vi.fn();
 const mockListModels = vi.fn();
+const mockStart = vi.fn().mockResolvedValue(undefined);
 const mockStop = vi.fn().mockResolvedValue([]);
 
 // Track all constructed client instances and their constructor args
@@ -15,6 +16,7 @@ const constructedClients: Array<{ instance: Record<string, unknown>; options: un
 
 vi.mock("@github/copilot-sdk", () => {
   const MockCopilotClient = function (this: Record<string, unknown>, opts?: unknown) {
+    this.start = mockStart;
     this.createSession = mockCreateSession;
     this.listModels = mockListModels;
     this.stop = mockStop;
@@ -188,6 +190,8 @@ describe("CopilotProvider", () => {
       await provider.generateCompletion("test", options, copilotConfig);
 
       expect(mockDisconnect).toHaveBeenCalledOnce();
+      // Client stays pooled on success — stop() is not called per operation.
+      expect(mockStop).not.toHaveBeenCalled();
     });
 
     it("disconnects session even when sendAndWait throws", async () => {
@@ -200,6 +204,7 @@ describe("CopilotProvider", () => {
       ).rejects.toThrow("timeout");
 
       expect(mockDisconnect).toHaveBeenCalledOnce();
+      expect(mockStop).toHaveBeenCalledOnce();
     });
 
     it("throws when sendAndWait returns no response", async () => {
@@ -218,6 +223,36 @@ describe("CopilotProvider", () => {
       await expect(
         provider.generateCompletion("test", options, copilotConfig),
       ).rejects.toThrow("auth failure");
+
+      // Client is evicted on error; stop is called as best-effort cleanup.
+      expect(mockStop).toHaveBeenCalledOnce();
+    });
+
+    it("evicts and recreates client on error", async () => {
+      // First call: createSession fails → client evicted
+      mockCreateSession.mockRejectedValueOnce(new Error("auth failure"));
+      await expect(
+        provider.generateCompletion("test", options, copilotConfig),
+      ).rejects.toThrow("auth failure");
+
+      // Second call: fresh client created, start called again
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+      await provider.generateCompletion("test", options, copilotConfig);
+
+      expect(constructedClients).toHaveLength(2);
+      expect(mockStart).toHaveBeenCalledTimes(2);
+    });
+
+    it("starts the client explicitly before creating a session", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      await provider.generateCompletion("test", options, copilotConfig);
+
+      expect(mockStart).toHaveBeenCalledBefore(mockCreateSession);
     });
   });
 
@@ -280,6 +315,8 @@ describe("CopilotProvider", () => {
       );
 
       expect(session.disconnect).toHaveBeenCalledOnce();
+      // Client stays pooled on success — stop() is not called per operation.
+      expect(mockStop).not.toHaveBeenCalled();
     });
 
     it("disconnects session even when streaming throws", async () => {
@@ -294,6 +331,7 @@ describe("CopilotProvider", () => {
       ).rejects.toThrow("stream error");
 
       expect(session.disconnect).toHaveBeenCalledOnce();
+      expect(mockStop).toHaveBeenCalledOnce();
     });
   });
 
@@ -310,7 +348,10 @@ describe("CopilotProvider", () => {
 
       const models = await provider.listModels(copilotConfig);
 
+      expect(mockStart).toHaveBeenCalledOnce();
       expect(mockListModels).toHaveBeenCalledOnce();
+      // Client stays pooled on success — stop() is not called per operation.
+      expect(mockStop).not.toHaveBeenCalled();
       expect(models).toHaveLength(2);
       expect(models[0]).toEqual(
         expect.objectContaining({ id: "gpt-5", name: "GPT-5" }),
@@ -331,6 +372,8 @@ describe("CopilotProvider", () => {
       const models = await provider.listModels(copilotConfig);
 
       expect(models[0].provider).toBe("copilot");
+      // Client stays pooled on success — stop() is not called per operation.
+      expect(mockStop).not.toHaveBeenCalled();
     });
 
     it("sets provider to byok type when in BYOK mode", async () => {
@@ -341,6 +384,8 @@ describe("CopilotProvider", () => {
       const models = await provider.listModels(byokConfig);
 
       expect(models[0].provider).toBe("openai");
+      // Client stays pooled on success — stop() is not called per operation.
+      expect(mockStop).not.toHaveBeenCalled();
     });
 
     it("surfaces errors from listModels", async () => {
@@ -349,11 +394,13 @@ describe("CopilotProvider", () => {
       await expect(provider.listModels(copilotConfig)).rejects.toThrow(
         "rate limit",
       );
+
+      expect(mockStop).toHaveBeenCalledOnce();
     });
   });
 
-  describe("client cache", () => {
-    it("reuses client for same config", async () => {
+  describe("client lifecycle", () => {
+    it("reuses the same client for the same config", async () => {
       const session = makeSession();
       mockCreateSession.mockResolvedValue(session);
       mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
@@ -361,7 +408,25 @@ describe("CopilotProvider", () => {
       await provider.generateCompletion("a", options, copilotConfig);
       await provider.generateCompletion("b", options, copilotConfig);
 
+      // One client constructed, started once, reused for both calls.
       expect(constructedClients).toHaveLength(1);
+      expect(mockStart).toHaveBeenCalledOnce();
+    });
+
+    it("concurrent calls with same config share a single client start", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      await Promise.all([
+        provider.generateCompletion("a", options, copilotConfig),
+        provider.generateCompletion("b", options, copilotConfig),
+      ]);
+
+      // Pool entry is set before start() resolves, so both concurrent callers
+      // await the same Promise — only one CopilotClient is ever constructed.
+      expect(constructedClients).toHaveLength(1);
+      expect(mockStart).toHaveBeenCalledOnce();
     });
 
     it("creates different clients for different github tokens", async () => {
@@ -417,44 +482,6 @@ describe("CopilotProvider", () => {
       await provider.generateCompletion("b", options, byokConfig);
 
       expect(constructedClients).toHaveLength(2);
-    });
-
-    it("evicts oldest entry when cache exceeds max size", async () => {
-      const session = makeSession();
-      mockCreateSession.mockResolvedValue(session);
-      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
-
-      // Fill cache with 10 entries (max size)
-      for (let i = 0; i < 10; i++) {
-        const cfg: AIProviderConfig = { mode: "copilot", githubToken: `token-${i}` };
-        await provider.generateCompletion("x", options, cfg);
-      }
-      expect(constructedClients).toHaveLength(10);
-
-      // 11th entry should trigger eviction
-      const overflowConfig: AIProviderConfig = { mode: "copilot", githubToken: "token-overflow" };
-      await provider.generateCompletion("x", options, overflowConfig);
-      expect(constructedClients).toHaveLength(11);
-
-      // Re-requesting the first evicted config should create a NEW client
-      const firstConfig: AIProviderConfig = { mode: "copilot", githubToken: "token-0" };
-      await provider.generateCompletion("x", options, firstConfig);
-      expect(constructedClients).toHaveLength(12);
-    });
-
-    it("_resetClientForTesting clears the entire cache", async () => {
-      const session = makeSession();
-      mockCreateSession.mockResolvedValue(session);
-      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
-
-      await provider.generateCompletion("a", options, copilotConfig);
-      expect(constructedClients).toHaveLength(1);
-
-      _resetClientForTesting();
-      constructedClients.length = 0;
-
-      await provider.generateCompletion("b", options, copilotConfig);
-      expect(constructedClients).toHaveLength(1);
     });
   });
 });

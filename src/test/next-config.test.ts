@@ -10,7 +10,7 @@ describe("next config", () => {
 
   it("keeps Copilot runtime packages external for server routes", () => {
     expect(nextConfig.serverExternalPackages).toEqual(
-      expect.arrayContaining(["@github/copilot", "@github/copilot-sdk"]),
+      expect.arrayContaining(["@github/copilot-sdk"]),
     );
   });
 
@@ -18,30 +18,19 @@ describe("next config", () => {
     expect(nextConfig.outputFileTracingIncludes).toEqual(
       expect.objectContaining({
         "/api/models": expect.arrayContaining([
-          "node_modules/@github/copilot/package.json",
-          "node_modules/@github/copilot/index.js",
-          "node_modules/@github/copilot/app.js",
-          "node_modules/@github/copilot/*.wasm",
-          "node_modules/@github/copilot/prebuilds/linux-*/**/*",
-          "node_modules/@github/copilot/clipboard/node_modules/@teddyzhu/clipboard-linux-*-gnu/*.node",
-          "node_modules/@github/copilot/ripgrep/bin/linux-*/**/*",
+          "node_modules/@github/copilot-linux-*/package.json",
+          "node_modules/@github/copilot-linux-*/copilot",
           "node_modules/@github/copilot-sdk/package.json",
           "node_modules/@github/copilot-sdk/dist/cjs/**/*",
         ]),
         "/api/game/new": expect.arrayContaining([
-          "node_modules/@github/copilot/package.json",
-          "node_modules/@github/copilot/app.js",
-          "node_modules/@github/copilot/prebuilds/linux-*/**/*",
-          "node_modules/@github/copilot/clipboard/node_modules/@teddyzhu/clipboard-linux-*-gnu/*.node",
-          "node_modules/@github/copilot/ripgrep/bin/linux-*/**/*",
+          "node_modules/@github/copilot-linux-*/package.json",
+          "node_modules/@github/copilot-linux-*/copilot",
           "node_modules/@github/copilot-sdk/dist/cjs/**/*",
         ]),
         "/api/game/\\[id\\]/turn": expect.arrayContaining([
-          "node_modules/@github/copilot/package.json",
-          "node_modules/@github/copilot/app.js",
-          "node_modules/@github/copilot/prebuilds/linux-*/**/*",
-          "node_modules/@github/copilot/clipboard/node_modules/@teddyzhu/clipboard-linux-*-gnu/*.node",
-          "node_modules/@github/copilot/ripgrep/bin/linux-*/**/*",
+          "node_modules/@github/copilot-linux-*/package.json",
+          "node_modules/@github/copilot-linux-*/copilot",
           "node_modules/@github/copilot-sdk/dist/cjs/**/*",
         ]),
       }),

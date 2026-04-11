@@ -35,7 +35,9 @@ function classifyCopilotError(error: string | null): "runtime" | "account" | "un
     normalized.includes("/var/task/node_modules/@github/copilot/app.js") ||
     normalized.includes("copilot_cli_path") ||
     normalized.includes("path to copilot cli is required") ||
-    normalized.includes("copilot cli not found")
+    normalized.includes("copilot cli not found") ||
+    normalized.includes("openssl certificates") ||
+    (normalized.includes("cannot open directory") && normalized.includes("ssl/certs"))
   ) {
     return "runtime";
   }

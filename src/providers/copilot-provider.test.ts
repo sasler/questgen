@@ -32,6 +32,15 @@ vi.mock("@github/copilot-sdk", () => {
 // Import after mocking
 import { CopilotProvider, _resetClientForTesting } from "./copilot-provider";
 
+function getExpectedCliPackageFragment(): string {
+  return `@github/copilot-${process.platform}-${process.arch}`;
+}
+
+function getExpectedCliPackagePattern(): RegExp {
+  const fragment = getExpectedCliPackageFragment().replace("/", "[\\\\/]");
+  return new RegExp(`${fragment}[\\\\/]`);
+}
+
 function makeSession(overrides: Record<string, unknown> = {}) {
   return {
     sendAndWait: mockSendAndWait,
@@ -122,7 +131,7 @@ describe("CopilotProvider", () => {
       expect(constructedClients[0]?.options).toEqual(
         expect.objectContaining({
           autoStart: false,
-          cliPath: expect.stringMatching(/@github[\\/]copilot[\\/]index\.js$/),
+          cliPath: expect.stringMatching(getExpectedCliPackagePattern()),
           githubToken: "gh-token-123",
           useLoggedInUser: false,
         }),
@@ -143,6 +152,23 @@ describe("CopilotProvider", () => {
           cliPath: expect.stringContaining("@github"),
           githubToken: "gh-token-123",
           useLoggedInUser: false,
+        }),
+      );
+    });
+
+    it("prefers COPILOT_CLI_PATH when explicitly configured", async () => {
+      vi.stubEnv("COPILOT_CLI_PATH", "C:\\custom\\copilot");
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({
+        data: { content: "response" },
+      });
+
+      await provider.generateCompletion("test", options, copilotConfig);
+
+      expect(constructedClients[0]?.options).toEqual(
+        expect.objectContaining({
+          cliPath: "C:\\custom\\copilot",
         }),
       );
     });

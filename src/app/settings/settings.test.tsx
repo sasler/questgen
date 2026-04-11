@@ -463,6 +463,20 @@ describe("SettingsPage", () => {
     expect(screen.queryByText(/copilot is not available for this account/i)).not.toBeInTheDocument();
   });
 
+  it("classifies OpenSSL certificate loader failures as runtime deployment issues", async () => {
+    vi.stubGlobal(
+      "fetch",
+      createCopilotModelErrorFetch(
+        "CLI server exited with code 1 stderr: Cannot open directory /local/p4clients/pkgbuild-const/workspace/src/Openssl/build/private/openssl/build/ssl/certs to load OpenSSL certificates.",
+      ),
+    );
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText(/questgen couldn't load copilot models/i)).toBeInTheDocument();
+    expect(screen.getByText(/deployment couldn't start the copilot runtime/i)).toBeInTheDocument();
+  });
+
   it("shows reconnect guidance when the GitHub session is connected but missing a Copilot token", async () => {
     vi.stubGlobal("fetch", createConnectedWithoutTokenModelErrorFetch());
 

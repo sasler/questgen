@@ -25,6 +25,10 @@ const clientPool = new Map<string, Promise<CopilotClient>>();
 const appRequire = createRequire(join(process.cwd(), "package.json"));
 let cachedCliPath: string | null = null;
 
+function getPlatformCliPackageName(): string {
+  return `@github/copilot-${process.platform}-${process.arch}`;
+}
+
 function getConfigKey(config: AIProviderConfig): string {
   if (config.mode === "copilot") {
     return `copilot:${config.githubToken ?? ""}`;
@@ -43,6 +47,12 @@ function resolveCopilotCliPath(): string {
   }
 
   const candidates = new Set<string>();
+
+  const platformPackage = getPlatformCliPackageName();
+  const executableName = process.platform === "win32" ? "copilot.exe" : "copilot";
+  candidates.add(
+    join(process.cwd(), "node_modules", "@github", platformPackage.replace("@github/", ""), executableName),
+  );
 
   try {
     const sdkEntry = appRequire.resolve("@github/copilot/sdk");
@@ -98,6 +108,7 @@ function getOrCreateClient(config: AIProviderConfig): Promise<CopilotClient> {
 /** @internal Reset client pool — exposed for testing only. */
 export function _resetClientForTesting(): void {
   clientPool.clear();
+  cachedCliPath = null;
 }
 
 async function withClient<T>(

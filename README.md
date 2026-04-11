@@ -116,6 +116,11 @@ openssl rand -base64 32
 **Important:** `NEXTAUTH_URL` must be the QuestGen app URL, not your Upstash URL. Update your
 GitHub OAuth App's callback URL to `https://your-domain.vercel.app/api/auth/callback/github`.
 
+QuestGen's Next.js config also explicitly traces the `@github/copilot` runtime into the
+server routes that spawn it. If you refactor deployment config, keep those
+`serverExternalPackages` and `outputFileTracingIncludes` entries intact or Vercel may build
+successfully but fail at runtime with missing Copilot files such as `app.js`.
+
 After this is configured once, players just click **Connect GitHub Copilot** and use their own subscription.
 
 ## Architecture

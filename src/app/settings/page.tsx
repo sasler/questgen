@@ -31,6 +31,8 @@ function classifyCopilotError(error: string | null): "runtime" | "account" | "un
   if (
     normalized.includes("could not find @github/copilot package") ||
     normalized.includes("could not resolve the @github/copilot cli path") ||
+    normalized.includes("err_module_not_found") ||
+    normalized.includes("/var/task/node_modules/@github/copilot/app.js") ||
     normalized.includes("copilot_cli_path") ||
     normalized.includes("path to copilot cli is required") ||
     normalized.includes("copilot cli not found")

@@ -448,6 +448,21 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("link", { name: /disconnect github/i })).toBeInTheDocument();
   });
 
+  it("classifies missing traced Copilot app.js as a runtime deployment failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      createCopilotModelErrorFetch(
+        "CLI server exited with code 1 stderr: Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/var/task/node_modules/@github/copilot/app.js' imported from /var/task/node_modules/@github/copilot/index.js",
+      ),
+    );
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText(/questgen couldn't load copilot models/i)).toBeInTheDocument();
+    expect(screen.getByText(/deployment couldn't start the copilot runtime/i)).toBeInTheDocument();
+    expect(screen.queryByText(/copilot is not available for this account/i)).not.toBeInTheDocument();
+  });
+
   it("shows reconnect guidance when the GitHub session is connected but missing a Copilot token", async () => {
     vi.stubGlobal("fetch", createConnectedWithoutTokenModelErrorFetch());
 

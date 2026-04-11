@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import {
   GameLayout,
@@ -50,6 +50,8 @@ export default function GamePage() {
   const [gameWon, setGameWon] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [streamingText, setStreamingText] = useState("");
+  const introRequestedRef = useRef(false);
 
   // Load game state on mount
   useEffect(() => {
@@ -88,6 +90,124 @@ export default function GamePage() {
     };
   }, [gameId]);
 
+  useEffect(() => {
+    if (initialLoading || !world || !player || history.length > 0 || introRequestedRef.current) {
+      return;
+    }
+
+    introRequestedRef.current = true;
+    let cancelled = false;
+
+    async function loadOpeningNarration() {
+      setIsLoading(true);
+      setStreamingText("");
+
+      try {
+        const settings = loadSettings();
+        const body: { byokApiKey?: string } = {};
+        if (settings.provider === "byok") {
+          body.byokApiKey = settings.byokApiKey;
+        }
+
+        const res = await fetch(`/api/game/${gameId}/intro`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Opening narration failed");
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) {
+          throw new Error("Streaming response body missing");
+        }
+
+        const readIntroEntry = async (): Promise<TurnEntry | null> => {
+          const decoder = new TextDecoder();
+          let buffered = "";
+          let streamedNarrative = "";
+          let introEntry: TurnEntry | null = null;
+
+          const handleLine = (line: string) => {
+            if (!line.trim()) return;
+
+            const message = JSON.parse(line) as
+              | { type: "chunk"; chunk: string }
+              | { type: "final"; entry: TurnEntry | null }
+              | { type: "error"; error: string };
+
+            if (message.type === "chunk") {
+              streamedNarrative += message.chunk;
+              if (!cancelled) {
+                setStreamingText(streamedNarrative);
+              }
+              return;
+            }
+
+            if (message.type === "error") {
+              throw new Error(message.error);
+            }
+
+            introEntry = message.entry;
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffered += decoder.decode(value, { stream: true });
+            const lines = buffered.split("\n");
+            buffered = lines.pop() ?? "";
+
+            for (const line of lines) {
+              handleLine(line);
+            }
+          }
+
+          buffered += decoder.decode();
+          if (buffered.trim()) {
+            handleLine(buffered);
+          }
+
+          return introEntry;
+        };
+
+        const finalIntroEntry = await readIntroEntry();
+        if (!cancelled && finalIntroEntry) {
+          setHistory((prev) => (prev.length === 0 ? [finalIntroEntry] : prev));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const errMsg =
+            err instanceof Error ? err.message : "Opening narration failed";
+          setHistory((prev) => [
+            ...prev,
+            {
+              turnId: `intro-error-${gameId}`,
+              role: "narrator",
+              text: `[Error: ${errMsg}]`,
+              timestamp: Date.now(),
+            },
+          ]);
+        }
+      } finally {
+        if (!cancelled) {
+          setStreamingText("");
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadOpeningNarration();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [gameId, history.length, initialLoading, player, world]);
+
   // Handle player command submission
   const handleCommand = useCallback(
     async (input: string) => {
@@ -105,6 +225,7 @@ export default function GamePage() {
       setHistory((prev) => [...prev, playerEntry]);
       setCommandHistory((prev) => [...prev, input]);
       setIsLoading(true);
+      setStreamingText("");
 
       try {
         const settings = loadSettings();
@@ -113,7 +234,7 @@ export default function GamePage() {
         const res = await fetch(`/api/game/${gameId}/turn`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input, turnId, byokApiKey }),
+          body: JSON.stringify({ input, turnId, byokApiKey, stream: true }),
         });
 
         if (!res.ok) {
@@ -121,22 +242,81 @@ export default function GamePage() {
           throw new Error(data.error || "Turn processing failed");
         }
 
-        const result: TurnResult = await res.json();
+        const reader = res.body?.getReader();
+        if (!reader) {
+          throw new Error("Streaming response body missing");
+        }
+
+        const readTurnResult = async (): Promise<TurnResult> => {
+          const decoder = new TextDecoder();
+          let buffered = "";
+          let streamedNarrative = "";
+          let finalResult: TurnResult | null = null;
+
+          const handleLine = (line: string) => {
+            if (!line.trim()) return;
+
+            const message = JSON.parse(line) as
+              | { type: "chunk"; chunk: string }
+              | { type: "final"; result: TurnResult }
+              | { type: "error"; error: string };
+
+            if (message.type === "chunk") {
+              streamedNarrative += message.chunk;
+              setStreamingText(streamedNarrative);
+              return;
+            }
+
+            if (message.type === "error") {
+              throw new Error(message.error);
+            }
+
+            finalResult = message.result;
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffered += decoder.decode(value, { stream: true });
+            const lines = buffered.split("\n");
+            buffered = lines.pop() ?? "";
+
+            for (const line of lines) {
+              handleLine(line);
+            }
+          }
+
+          buffered += decoder.decode();
+          if (buffered.trim()) {
+            handleLine(buffered);
+          }
+
+          if (!finalResult) {
+            throw new Error("Turn stream finished without a final result");
+          }
+
+          return finalResult;
+        };
+
+        const finalResult = await readTurnResult();
+
+        setStreamingText("");
 
         // Add narrator entry
         const narratorEntry: TurnEntry = {
           turnId: `${turnId}-narrator`,
           role: "narrator",
-          text: result.narrative,
+          text: finalResult.narrative,
           timestamp: Date.now(),
         };
         setHistory((prev) => [...prev, narratorEntry]);
 
         // Update player state
-        setPlayer(result.newPlayerState);
+        setPlayer(finalResult.newPlayerState);
 
         // Refetch world if it changed
-        if (result.worldChanged) {
+        if (finalResult.worldChanged) {
           const worldRes = await fetch(`/api/game/${gameId}`);
           if (worldRes.ok) {
             const fullState = await worldRes.json();
@@ -145,7 +325,7 @@ export default function GamePage() {
         }
 
         // Check win
-        if (result.gameWon) {
+        if (finalResult.gameWon) {
           setGameWon(true);
           const victoryEntry: TurnEntry = {
             turnId: `${turnId}-victory`,
@@ -155,7 +335,8 @@ export default function GamePage() {
           };
           setHistory((prev) => [...prev, victoryEntry]);
         }
-      } catch (err) {
+        } catch (err) {
+        setStreamingText("");
         const errMsg =
           err instanceof Error ? err.message : "Something went wrong";
         const errorEntry: TurnEntry = {
@@ -273,6 +454,7 @@ export default function GamePage() {
       <Terminal
         entries={history}
         isLoading={isLoading}
+        streamingText={streamingText}
         welcomeMessage={welcomeMsg}
       />
       <CommandInput

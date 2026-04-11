@@ -8,7 +8,12 @@ import type {
 import { AITurnResponseSchema } from "@/types";
 import { applyAction, checkWinCondition, buildLocalContext } from "@/engine";
 import type { ActionResult } from "@/engine/game-engine";
-import { buildTurnPrompt, GAMEPLAY_SYSTEM_PROMPT } from "@/prompts";
+import {
+  buildNarrativePrompt,
+  buildTurnPrompt,
+  GAMEPLAY_SYSTEM_PROMPT,
+  VALIDATED_NARRATION_SYSTEM_PROMPT,
+} from "@/prompts";
 import { getAIProvider } from "@/providers";
 import type { IAIProvider, AIProviderConfig } from "@/providers/types";
 import { GameStorage } from "@/lib/storage";
@@ -28,13 +33,6 @@ export interface TurnResult {
 
 const FALLBACK_NARRATIVE =
   "The universe momentarily lost track of what was happening. Try again.";
-
-const WORLD_MUTATING_ACTIONS = new Set([
-  "unlock",
-  "solve_puzzle",
-  "reveal_connection",
-  "npc_state_change",
-]);
 
 // ── JSON extraction ─────────────────────────────────────────────────
 
@@ -59,6 +57,171 @@ function parseAIResponse(raw: string): AITurnResponse | null {
     return validated.success ? validated.data : null;
   } catch {
     return null;
+  }
+}
+
+function hasWorldChanged(previousWorld: GameWorld, nextWorld: GameWorld): boolean {
+  return JSON.stringify(previousWorld) !== JSON.stringify(nextWorld);
+}
+
+function buildDeterministicNarrative(
+  actionResults: ActionResult[],
+  currentWorld: GameWorld,
+  currentPlayer: PlayerState,
+  gameWon: boolean,
+): string {
+  const summaries = actionResults
+    .map((result) => result.message.trim())
+    .filter((message) => message.length > 0);
+
+  if (gameWon) {
+    summaries.push("Against the statistical expectations of nearly everyone, you have won.");
+  }
+
+  if (summaries.length > 0) {
+    return summaries.join(" ");
+  }
+
+  return (
+    currentWorld.rooms[currentPlayer.currentRoomId]?.description ??
+    "Reality remains in place, which is reassuring if disappointingly uneventful."
+  );
+}
+
+function buildValidatedNarrationContext(
+  world: GameWorld,
+  player: PlayerState,
+  history: TurnEntry[],
+): string {
+  const localContext = buildLocalContext(world, player, history);
+  const lines = [
+    `Current room: ${localContext.currentRoom.name}`,
+    `Room description: ${localContext.currentRoom.description}`,
+  ];
+
+  if (localContext.nearbyRooms.length > 0) {
+    lines.push(
+      "",
+      "Visible exits:",
+      ...localContext.nearbyRooms.map(
+        (nearbyRoom) =>
+          `- ${nearbyRoom.direction} to ${nearbyRoom.room.name}${nearbyRoom.locked ? " [locked]" : ""}`,
+      ),
+    );
+  }
+
+  lines.push(
+    "",
+    "Inventory:",
+    ...(localContext.inventoryItems.length > 0
+      ? localContext.inventoryItems.map((item) => `- ${item.name}`)
+      : ["- Empty"]),
+  );
+
+  if (localContext.roomItems.length > 0) {
+    lines.push(
+      "",
+      "Items in room:",
+      ...localContext.roomItems.map((item) => `- ${item.name}: ${item.description}`),
+    );
+  }
+
+  if (localContext.roomNPCs.length > 0) {
+    lines.push(
+      "",
+      "NPCs present:",
+      ...localContext.roomNPCs.map(
+        (npc) => `- ${npc.name}: ${npc.description} [state: ${npc.state}]`,
+      ),
+    );
+  }
+
+  if (localContext.activePuzzles.length > 0) {
+    lines.push(
+      "",
+      "Active puzzles:",
+      ...localContext.activePuzzles.map((puzzle) => `- ${puzzle.name}: ${puzzle.description}`),
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function buildValidatedNarrationEvent(
+  playerInput: string,
+  actionResults: ActionResult[],
+  gameWon: boolean,
+): string {
+  const lines = [`Player input: ${playerInput}`];
+
+  if (actionResults.length > 0) {
+    lines.push(
+      "",
+      "Validated action outcomes:",
+      ...actionResults.map(
+        (result, index) =>
+          `${index + 1}. ${result.success ? "SUCCESS" : "FAILURE"} - ${result.message}`,
+      ),
+    );
+  } else {
+    lines.push("", "Validated action outcomes:", "1. No state-changing action was applied.");
+  }
+
+  if (gameWon) {
+    lines.push("", "Game outcome: the player has just satisfied the win condition.");
+  }
+
+  lines.push("", "Narrate only what actually happened.");
+  return lines.join("\n");
+}
+
+async function generateValidatedNarrative(
+  ai: IAIProvider,
+  aiConfig: AIProviderConfig,
+  settings: GameSettings,
+  playerInput: string,
+  actionResults: ActionResult[],
+  currentWorld: GameWorld,
+  currentPlayer: PlayerState,
+  history: TurnEntry[],
+  gameWon: boolean,
+  onNarrativeChunk?: (chunk: string) => void,
+): Promise<string> {
+  const deterministicNarrative = buildDeterministicNarrative(
+    actionResults,
+    currentWorld,
+    currentPlayer,
+    gameWon,
+  );
+
+  try {
+    const narrationPrompt = buildNarrativePrompt(
+      buildValidatedNarrationContext(currentWorld, currentPlayer, history),
+      buildValidatedNarrationEvent(playerInput, actionResults, gameWon),
+    );
+    const completion = onNarrativeChunk
+      ? await ai.streamCompletion(
+          narrationPrompt,
+          {
+            model: settings.gameplayModel,
+            systemMessage: VALIDATED_NARRATION_SYSTEM_PROMPT,
+          },
+          aiConfig,
+          onNarrativeChunk,
+        )
+      : await ai.generateCompletion(
+          narrationPrompt,
+          {
+            model: settings.gameplayModel,
+            systemMessage: VALIDATED_NARRATION_SYSTEM_PROMPT,
+          },
+          aiConfig,
+        );
+
+    const narrative = completion.content.trim();
+    return narrative.length > 0 ? narrative : deterministicNarrative;
+  } catch {
+    return deterministicNarrative;
   }
 }
 
@@ -96,6 +259,7 @@ export async function processTurn(
   settings: GameSettings,
   storage?: IGameStorage,
   provider?: IAIProvider,
+  onNarrativeChunk?: (chunk: string) => void,
 ): Promise<TurnResult> {
   const store = storage ?? new GameStorage();
   const ai = provider ?? getAIProvider();
@@ -188,8 +352,6 @@ export async function processTurn(
   const actionResults: ActionResult[] = [];
   let currentWorld = world;
   let currentPlayer = player;
-  let worldChanged = false;
-
   for (const proposedAction of aiResponse.proposedActions) {
     const { result, world: newWorld, player: newPlayer } = applyAction(
       proposedAction,
@@ -202,16 +364,26 @@ export async function processTurn(
     if (result.success) {
       currentWorld = newWorld;
       currentPlayer = newPlayer;
-
-      if (WORLD_MUTATING_ACTIONS.has(proposedAction.type)) {
-        worldChanged = true;
-      }
     }
   }
+
+  const worldChanged = hasWorldChanged(world, currentWorld);
 
   // ── 7. Check win condition ──────────────────────────────────────
 
   const gameWon = checkWinCondition(currentWorld, currentPlayer);
+  const validatedNarrative = await generateValidatedNarrative(
+    ai,
+    aiConfig,
+    settings,
+    playerInput,
+    actionResults,
+    currentWorld,
+    currentPlayer,
+    history,
+    gameWon,
+    onNarrativeChunk,
+  );
 
   // ── 8. Save state ───────────────────────────────────────────────
 
@@ -248,7 +420,7 @@ export async function processTurn(
     const narratorEntry: TurnEntry = {
       turnId,
       role: "narrator",
-      text: aiResponse.narrative,
+      text: validatedNarrative,
       timestamp: now,
     };
 
@@ -276,7 +448,7 @@ export async function processTurn(
 
   return {
     success: true,
-    narrative: aiResponse.narrative,
+    narrative: validatedNarrative,
     actionResults,
     newPlayerState: currentPlayer,
     worldChanged,

@@ -188,12 +188,34 @@ function createMockStorage(overrides?: {
   };
 }
 
-function createMockProvider(response: string): IAIProvider {
+function createMockProvider(response: string | string[]): IAIProvider {
+  const queuedResponses = Array.isArray(response) ? [...response] : [response];
+  let finalNarrative = Array.isArray(response) ? response.at(-1) ?? "" : response;
+
+  if (!Array.isArray(response)) {
+    try {
+      const stripped = response.replace(/```(?:json)?\s*/g, "").replace(/```/g, "");
+      const firstBrace = stripped.indexOf("{");
+      const lastBrace = stripped.lastIndexOf("}");
+      const candidate =
+        firstBrace >= 0 && lastBrace > firstBrace
+          ? stripped.slice(firstBrace, lastBrace + 1)
+          : response;
+      const parsed = JSON.parse(candidate) as { narrative?: string };
+      if (typeof parsed.narrative === "string") {
+        finalNarrative = parsed.narrative;
+      }
+    } catch {}
+  }
+
   return {
-    generateCompletion: vi.fn().mockResolvedValue({
-      content: response,
-      model: "gpt-4",
-      finishReason: "stop",
+    generateCompletion: vi.fn().mockImplementation(async () => {
+      const nextResponse = queuedResponses.shift();
+      return {
+        content: nextResponse ?? finalNarrative,
+        model: "gpt-4",
+        finishReason: "stop",
+      };
     }),
     streamCompletion: vi.fn(),
     listModels: vi.fn().mockResolvedValue([]),
@@ -408,6 +430,54 @@ describe("processTurn", () => {
     expect(storage.saveWorld).toHaveBeenCalledOnce();
   });
 
+  it("should detect world changes from pickup action and save world", async () => {
+    const storage = createMockStorage();
+    const provider = createMockProvider(
+      aiResponse("You pocket the iron key.", [{ type: "pickup", itemId: "key1" }])
+    );
+
+    const result = await processTurn(
+      "game-1",
+      "take key",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.actionResults[0].success).toBe(true);
+    expect(result.newPlayerState.inventory).toContain("key1");
+    expect(result.worldChanged).toBe(true);
+    expect(storage.saveWorld).toHaveBeenCalledOnce();
+  });
+
+  it("should detect world changes from use_item unlocking a lock and save world", async () => {
+    const player = createTestPlayer({ inventory: ["key1"] });
+    const storage = createMockStorage({ player });
+    const provider = createMockProvider(
+      aiResponse("You use the key on the lock.", [
+        { type: "use_item", itemId: "key1", targetId: "lock1" },
+      ])
+    );
+
+    const result = await processTurn(
+      "game-1",
+      "use key on east door",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.actionResults[0].success).toBe(true);
+    expect(result.worldChanged).toBe(true);
+    expect(storage.saveWorld).toHaveBeenCalledOnce();
+  });
+
   it("should detect world changes from solve_puzzle action", async () => {
     const player = createTestPlayer({ inventory: ["key1"] });
     const storage = createMockStorage({ player });
@@ -596,6 +666,37 @@ describe("processTurn", () => {
     expect(narratorEntry.role).toBe("narrator");
     expect(narratorEntry.text).toBe("You look around the room.");
     expect(narratorEntry.turnId).toBe("turn-1");
+  });
+
+  it("should return validated narration instead of speculative proposal narration", async () => {
+    const storage = createMockStorage();
+    const provider = createMockProvider([
+      aiResponse("You stride east through the unlocked doorway.", [
+        { type: "move", direction: "east" },
+      ]),
+      "The door remains stubbornly locked, which is exactly the sort of optimism-correction the universe specializes in.",
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "go east",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.actionResults).toHaveLength(1);
+    expect(result.actionResults[0].success).toBe(false);
+    expect(result.narrative).toBe(
+      "The door remains stubbornly locked, which is exactly the sort of optimism-correction the universe specializes in.",
+    );
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
+
+    const narratorEntry = (storage.appendHistory as ReturnType<typeof vi.fn>).mock.calls[1][1];
+    expect(narratorEntry.text).toBe(result.narrative);
   });
 
   // ── Edge cases ──────────────────────────────────────────────────

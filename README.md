@@ -115,6 +115,9 @@ openssl rand -base64 32
 
 **Important:** `NEXTAUTH_URL` must be the QuestGen app URL, not your Upstash URL. Update your
 GitHub OAuth App's callback URL to `https://your-domain.vercel.app/api/auth/callback/github`.
+If world creation fails with `Failed to parse URL from /pipeline`, your deployment is missing
+`UPSTASH_REDIS_REST_URL` and/or `UPSTASH_REDIS_REST_TOKEN`, or the Upstash URL was accidentally put
+into `NEXTAUTH_URL`.
 
 QuestGen's Next.js config also explicitly traces the Copilot SDK and the platform-specific
 Copilot CLI binary into the server routes that spawn it. If you refactor deployment config,

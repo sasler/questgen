@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSessionOwnerIds, sessionOwnsUserId } from "@/lib/auth-utils";
-import { getStorage } from "@/lib/storage";
+import { formatStorageError, getStorage } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
@@ -17,25 +17,29 @@ export async function GET(
   }
 
   const { id } = await params;
-  const storage = getStorage();
-  const metadata = await storage.getMetadata(id);
+  try {
+    const storage = getStorage();
+    const metadata = await storage.getMetadata(id);
 
-  if (!metadata) {
-    return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    if (!metadata) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
+    if (!sessionOwnsUserId(session, metadata.userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const [world, player, history, settings] = await Promise.all([
+      storage.getWorld(id),
+      storage.getPlayerState(id),
+      storage.getHistory(id),
+      storage.getSettings(id),
+    ]);
+
+    return NextResponse.json({ metadata, world, player, history, settings });
+  } catch (error) {
+    return NextResponse.json({ error: formatStorageError(error) }, { status: 500 });
   }
-
-  if (!sessionOwnsUserId(session, metadata.userId)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const [world, player, history, settings] = await Promise.all([
-    storage.getWorld(id),
-    storage.getPlayerState(id),
-    storage.getHistory(id),
-    storage.getSettings(id),
-  ]);
-
-  return NextResponse.json({ metadata, world, player, history, settings });
 }
 
 export async function DELETE(
@@ -48,17 +52,21 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const storage = getStorage();
-  const metadata = await storage.getMetadata(id);
+  try {
+    const storage = getStorage();
+    const metadata = await storage.getMetadata(id);
 
-  if (!metadata) {
-    return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    if (!metadata) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
+    if (!sessionOwnsUserId(session, metadata.userId)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    await storage.deleteGame(id, metadata.userId);
+    return NextResponse.json({ deleted: true });
+  } catch (error) {
+    return NextResponse.json({ error: formatStorageError(error) }, { status: 500 });
   }
-
-  if (!sessionOwnsUserId(session, metadata.userId)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  await storage.deleteGame(id, metadata.userId);
-  return NextResponse.json({ deleted: true });
 }

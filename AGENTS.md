@@ -39,6 +39,7 @@ npx playwright test   # E2E tests (requires dev server running)
 - **Unified settings** — all client settings flow through `src/lib/settings.ts` (single source of truth)
 - **Copilot status checks stay lightweight** — do not boot the Copilot SDK or call `listModels()` from simple status endpoints; only actual model-loading paths should start the CLI/runtime
 - **Deployment auth env compatibility** — accept both `GITHUB_ID` / `GITHUB_SECRET` and `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`; docs should prefer the `GITHUB_CLIENT_*` names, and `NEXTAUTH_URL` must point at the QuestGen app URL, not Upstash
+- **Deployment storage envs must be explicit** — Vercel must have both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`; if either is missing, fail with a clear config error instead of letting Upstash surface a vague `/pipeline` URL parse failure
 - **Vercel Copilot runtime stays binary-first** — preserve the `next.config.ts` `serverExternalPackages` and `outputFileTracingIncludes` entries that trace `@github/copilot-sdk` plus the platform `@github/copilot-<platform>-<arch>` executable; falling back to the JS launcher can fail in serverless runtimes and bloat function size
 
 ## Key Directories

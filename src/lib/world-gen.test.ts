@@ -3,6 +3,7 @@ import { generateWorld } from "./world-gen";
 import type { GameWorld, GameGenerationRequest, GameSettings, GameMetadata, PlayerState } from "@/types";
 import type { IGameStorage } from "@/lib/storage";
 import type { IAIProvider, AIProviderConfig, AICompletionOptions } from "@/providers/types";
+import * as storageModule from "@/lib/storage";
 
 // ── Test fixtures ────────────────────────────────────────────────────
 
@@ -276,6 +277,31 @@ describe("generateWorld", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Storage");
+  });
+
+  it("returns error when storage initialization throws", async () => {
+    const provider = createMockProvider([validWorldJson]);
+    const getStorageSpy = vi
+      .spyOn(storageModule, "getStorage")
+      .mockImplementation(() => {
+        throw new Error("Missing Upstash Redis configuration");
+      });
+
+    const result = await generateWorld(
+      request,
+      settings,
+      "user-1",
+      aiConfig,
+      undefined,
+      provider,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Storage failed");
+    expect(result.error).toContain("Missing Upstash Redis configuration");
+    expect(provider.generateCompletion).not.toHaveBeenCalled();
+
+    getStorageSpy.mockRestore();
   });
 
   // ── Player state correctness ───────────────────────────────────

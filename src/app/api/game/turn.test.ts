@@ -10,14 +10,17 @@ const { mockAuth, mockProcessTurn, mockGetMetadata, mockGetSettings } =
     mockGetMetadata: vi.fn(),
     mockGetSettings: vi.fn(),
   }));
+const mockGetStorage = vi.fn(() => ({
+  getMetadata: mockGetMetadata,
+  getSettings: mockGetSettings,
+}));
 
 vi.mock("@/lib/auth", () => ({ auth: mockAuth }));
 vi.mock("@/lib/turn-processor", () => ({ processTurn: mockProcessTurn }));
 vi.mock("@/lib/storage", () => ({
-  getStorage: () => ({
-    getMetadata: mockGetMetadata,
-    getSettings: mockGetSettings,
-  }),
+  getStorage: () => mockGetStorage(),
+  formatStorageError: (error: unknown) =>
+    `Storage failed: ${error instanceof Error ? error.message : String(error)}`,
 }));
 
 import { POST } from "@/app/api/game/[id]/turn/route";
@@ -83,6 +86,10 @@ const mockTurnResult = {
 describe("POST /api/game/[id]/turn", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetStorage.mockImplementation(() => ({
+      getMetadata: mockGetMetadata,
+      getSettings: mockGetSettings,
+    }));
     mockAuth.mockResolvedValue(mockSession);
     mockGetMetadata.mockResolvedValue(mockMetadata);
     mockGetSettings.mockResolvedValue(mockSettings);
@@ -232,5 +239,21 @@ describe("POST /api/game/[id]/turn", () => {
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toMatch(/AI provider failed/);
+  });
+
+  it("returns a clear storage error when Redis is misconfigured", async () => {
+    mockGetStorage.mockImplementation(() => {
+      throw new Error("Missing Upstash Redis configuration");
+    });
+
+    const res = await POST(
+      makeRequest({ input: "go north", turnId: "t1" }),
+      makeParams(),
+    );
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({
+      error: "Storage failed: Missing Upstash Redis configuration",
+    });
   });
 });

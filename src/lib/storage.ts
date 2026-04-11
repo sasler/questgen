@@ -51,11 +51,33 @@ export interface IGameStorage {
 // Singleton Redis instance for production
 let redisInstance: Redis | null = null;
 
+type RedisEnv = Readonly<Record<string, string | undefined>>;
+
+export function getRedisConfigFromEnv(
+  env: RedisEnv = process.env,
+): { url: string; token: string } {
+  const url = env.UPSTASH_REDIS_REST_URL?.trim();
+  const token = env.UPSTASH_REDIS_REST_TOKEN?.trim();
+
+  if (!url || !token) {
+    throw new Error(
+      "Missing Upstash Redis configuration. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN. NEXTAUTH_URL must be your QuestGen app URL, not your Upstash URL.",
+    );
+  }
+
+  return { url, token };
+}
+
+export function formatStorageError(error: unknown): string {
+  return `Storage failed: ${error instanceof Error ? error.message : String(error)}`;
+}
+
 function getRedis(): Redis {
   if (!redisInstance) {
+    const { url, token } = getRedisConfigFromEnv();
     redisInstance = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL!,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+      url,
+      token,
     });
   }
   return redisInstance;

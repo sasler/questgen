@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSessionOwnerIds } from "@/lib/auth-utils";
-import { getStorage } from "@/lib/storage";
+import { formatStorageError, getStorage } from "@/lib/storage";
 import type { GameMetadata } from "@/types";
 
 export const runtime = "nodejs";
@@ -17,18 +17,22 @@ export async function GET(_request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const storage = getStorage();
-  const gameIds = [
-    ...new Set((await Promise.all(userIds.map((userId) => storage.getUserGames(userId)))).flat()),
-  ];
+  try {
+    const storage = getStorage();
+    const gameIds = [
+      ...new Set((await Promise.all(userIds.map((userId) => storage.getUserGames(userId)))).flat()),
+    ];
 
-  const metadataResults = await Promise.all(
-    gameIds.map((id) => storage.getMetadata(id))
-  );
+    const metadataResults = await Promise.all(
+      gameIds.map((id) => storage.getMetadata(id))
+    );
 
-  const games: GameMetadata[] = metadataResults
-    .filter((m): m is GameMetadata => m !== null)
-    .sort((a, b) => b.lastPlayedAt - a.lastPlayedAt);
+    const games: GameMetadata[] = metadataResults
+      .filter((m): m is GameMetadata => m !== null)
+      .sort((a, b) => b.lastPlayedAt - a.lastPlayedAt);
 
-  return NextResponse.json({ games });
+    return NextResponse.json({ games });
+  } catch (error) {
+    return NextResponse.json({ error: formatStorageError(error) }, { status: 500 });
+  }
 }

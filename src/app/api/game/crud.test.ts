@@ -18,9 +18,12 @@ const mockStorage = {
   deleteGame: vi.fn(),
   gameExists: vi.fn(),
 };
+const mockGetStorage = vi.fn(() => mockStorage);
 vi.mock("@/lib/storage", () => ({
   GameStorage: vi.fn(),
-  getStorage: () => mockStorage,
+  getStorage: () => mockGetStorage(),
+  formatStorageError: (error: unknown) =>
+    `Storage failed: ${error instanceof Error ? error.message : String(error)}`,
 }));
 
 // ---------------------------------------------------------------------------
@@ -101,6 +104,7 @@ function gameParams(id: string) {
 // ---------------------------------------------------------------------------
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGetStorage.mockImplementation(() => mockStorage);
 });
 
 describe("GET /api/games", () => {
@@ -171,6 +175,20 @@ describe("GET /api/games", () => {
       "shared-game",
     ]);
   });
+
+  it("returns a clear storage error when Redis is misconfigured", async () => {
+    mockAuth.mockResolvedValue(session);
+    mockGetStorage.mockImplementation(() => {
+      throw new Error("Missing Upstash Redis configuration");
+    });
+
+    const res = await GET(gamesRequest());
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({
+      error: "Storage failed: Missing Upstash Redis configuration",
+    });
+  });
 });
 
 describe("GET /api/game/[id]", () => {
@@ -228,6 +246,20 @@ describe("GET /api/game/[id]", () => {
     const body = await res.json();
     expect(body.metadata).toEqual(meta);
   });
+
+  it("returns a clear storage error when loading storage fails", async () => {
+    mockAuth.mockResolvedValue(session);
+    mockGetStorage.mockImplementation(() => {
+      throw new Error("Missing Upstash Redis configuration");
+    });
+
+    const res = await GET_GAME(gameRequest("game-1"), gameParams("game-1"));
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({
+      error: "Storage failed: Missing Upstash Redis configuration",
+    });
+  });
 });
 
 describe("DELETE /api/game/[id]", () => {
@@ -280,5 +312,22 @@ describe("DELETE /api/game/[id]", () => {
       "game-1",
       session.user.id,
     );
+  });
+
+  it("returns a clear storage error when delete storage initialization fails", async () => {
+    mockAuth.mockResolvedValue(session);
+    mockGetStorage.mockImplementation(() => {
+      throw new Error("Missing Upstash Redis configuration");
+    });
+
+    const res = await DELETE_GAME(
+      gameRequest("game-1", "DELETE"),
+      gameParams("game-1"),
+    );
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({
+      error: "Storage failed: Missing Upstash Redis configuration",
+    });
   });
 });

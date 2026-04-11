@@ -16,7 +16,7 @@ import {
   buildWorldGenerationPrompt,
   WORLD_GENERATION_SYSTEM_PROMPT,
 } from "@/prompts";
-import { getStorage } from "@/lib/storage";
+import { formatStorageError, getStorage } from "@/lib/storage";
 import type { IGameStorage } from "@/lib/storage";
 
 export interface WorldGenResult {
@@ -64,7 +64,15 @@ export async function generateWorld(
   provider?: IAIProvider,
 ): Promise<WorldGenResult> {
   const resolvedProvider = provider ?? getAIProvider();
-  const resolvedStorage = storage ?? getStorage();
+  let resolvedStorage: IGameStorage;
+  try {
+    resolvedStorage = storage ?? getStorage();
+  } catch (err) {
+    return {
+      success: false,
+      error: formatStorageError(err),
+    };
+  }
 
   // Step 1: Generate game ID
   const gameId = crypto.randomUUID();
@@ -167,7 +175,7 @@ export async function generateWorld(
     } catch (err) {
       return {
         success: false,
-        error: `Storage failed: ${err instanceof Error ? err.message : String(err)}`,
+        error: formatStorageError(err),
       };
     }
 

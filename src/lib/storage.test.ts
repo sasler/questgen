@@ -6,7 +6,7 @@ import type {
   GameSettings,
   GameMetadata,
 } from "@/types";
-import { GameStorage } from "./storage";
+import { GameStorage, getRedisConfigFromEnv } from "./storage";
 
 // ---------------------------------------------------------------------------
 // Mock Redis that stores data in-memory
@@ -150,6 +150,26 @@ function makeMetadata(gameId = "game1", userId = "user1"): GameMetadata {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+describe("getRedisConfigFromEnv", () => {
+  it("returns trimmed Redis config when both vars are present", () => {
+    expect(
+      getRedisConfigFromEnv({
+        UPSTASH_REDIS_REST_URL: " https://example.upstash.io ",
+        UPSTASH_REDIS_REST_TOKEN: " secret-token ",
+      }),
+    ).toEqual({
+      url: "https://example.upstash.io",
+      token: "secret-token",
+    });
+  });
+
+  it("throws a clear error when Redis env vars are missing", () => {
+    expect(() => getRedisConfigFromEnv({})).toThrow(
+      "Missing Upstash Redis configuration. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN. NEXTAUTH_URL must be your QuestGen app URL, not your Upstash URL.",
+    );
+  });
+});
+
 describe("GameStorage", () => {
   let redis: MockRedis;
   let storage: GameStorage;

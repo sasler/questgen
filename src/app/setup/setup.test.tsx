@@ -13,8 +13,7 @@ vi.mock("next/link", () => ({
     href: string;
     children: React.ReactNode;
     [key: string]: unknown;
-  }) =>
-    React.createElement("a", { href, ...props }, children),
+  }) => React.createElement("a", { href, ...props }, children),
 }));
 
 import SetupPage from "./page";
@@ -40,7 +39,7 @@ function mockFetchResponse(data: Record<string, unknown>) {
     new Response(JSON.stringify(data), {
       status: 200,
       headers: { "Content-Type": "application/json" },
-    })
+    }),
   );
 }
 
@@ -66,16 +65,14 @@ describe("Setup Page", () => {
                 new Response(JSON.stringify(unconfiguredResponse), {
                   status: 200,
                   headers: { "Content-Type": "application/json" },
-                })
+                }),
               ),
-            5000
-          )
-        )
+            5000,
+          ),
+        ),
     );
     render(<SetupPage />);
-    expect(
-      screen.getByText(/Checking system configuration/i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Checking system configuration/i)).toBeInTheDocument();
   });
 
   it("shows unconfigured state with all steps red", async () => {
@@ -121,9 +118,7 @@ describe("Setup Page", () => {
     render(<SetupPage />);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: /create github oauth app/i })
-      ).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /create github oauth app/i })).toBeInTheDocument();
     });
 
     const oauthLink = screen.getByRole("link", { name: /create github oauth app/i });
@@ -131,5 +126,15 @@ describe("Setup Page", () => {
     expect(href).toContain("github.com/settings/applications/new");
     expect(href).toContain("callback_url");
     expect(href).toContain("api%2Fauth%2Fcallback%2Fgithub");
+  });
+
+  it("documents both accepted GitHub OAuth env var pairs", async () => {
+    mockFetchResponse(unconfiguredResponse);
+    render(<SetupPage />);
+
+    expect(await screen.findByText(/GITHUB_ID/i)).toBeInTheDocument();
+    expect(screen.getByText(/GITHUB_CLIENT_ID/i)).toBeInTheDocument();
+    expect(screen.getByText(/GITHUB_SECRET/i)).toBeInTheDocument();
+    expect(screen.getByText(/GITHUB_CLIENT_SECRET/i)).toBeInTheDocument();
   });
 });

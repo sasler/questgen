@@ -13,11 +13,7 @@ interface SetupStatus {
 }
 
 function StatusIcon({ ok }: { ok: boolean }) {
-  return ok ? (
-    <span className="text-[#00ff41]">✓</span>
-  ) : (
-    <span className="text-[#ff4444]">✗</span>
-  );
+  return ok ? <span className="text-[#00ff41]">✓</span> : <span className="text-[#ff4444]">✗</span>;
 }
 
 function generateSecret(): string {
@@ -74,12 +70,10 @@ export default function SetupPage() {
           <h1 className="text-2xl md:text-3xl font-bold text-[#ffb000] tracking-wider">
             ╚══════════════════════════════╝
           </h1>
-          <p className="text-[#00ff41] mt-2 text-sm opacity-70">
-            One-time deployment setup
-          </p>
+          <p className="text-[#00ff41] mt-2 text-sm opacity-70">One-time deployment setup</p>
           <p className="text-[#4a6741] mt-3 text-xs leading-relaxed">
-            This page is only for the person deploying QuestGen. Regular players should
-            only see a GitHub connect button, not any of this.
+            This page is only for the person deploying QuestGen. Regular players should only see a
+            GitHub connect button, not any of this.
           </p>
         </div>
 
@@ -91,8 +85,8 @@ export default function SetupPage() {
         {statusUnavailable && (
           <PanelFrame title="LOCAL STATUS CHECKS">
             <p className="text-xs text-[#4a6741] leading-relaxed">
-              Live setup checks are only available on localhost. On Vercel, set the
-              deployment owner variables in the dashboard and redeploy.
+              Live setup checks are only available on localhost. On Vercel, set the deployment owner
+              variables in the dashboard and redeploy.
             </p>
           </PanelFrame>
         )}
@@ -101,9 +95,7 @@ export default function SetupPage() {
           <PanelFrame title="STATUS">
             <div className="text-center py-4 space-y-3">
               <p className="text-2xl">🎉</p>
-              <p className="text-[#00ff41] text-lg font-bold">
-                All systems go!
-              </p>
+              <p className="text-[#00ff41] text-lg font-bold">All systems go!</p>
               <Link
                 href="/"
                 className="inline-block mt-2 px-4 py-2 border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-[#0a0a0a] transition-colors"
@@ -145,7 +137,9 @@ export default function SetupPage() {
             <details className="text-xs opacity-70">
               <summary className="cursor-pointer text-[#ffb000]">Technical details</summary>
               <div className="mt-2 space-y-2">
-                <p>Save it as <code>AUTH_SECRET</code> in <code>.env.local</code> or Vercel.</p>
+                <p>
+                  Save it as <code>AUTH_SECRET</code> in <code>.env.local</code> or Vercel.
+                </p>
                 <code className="block bg-[#0a0a0a] border border-[#1a3a1a] px-2 py-1">
                   openssl rand -base64 32
                 </code>
@@ -166,8 +160,8 @@ export default function SetupPage() {
               )}
             </p>
             <p className="text-xs opacity-70 leading-relaxed">
-              Players use their own GitHub account and their own Copilot subscription.
-              GitHub still requires the app owner to register the sign-in app once.
+              Players use their own GitHub account and their own Copilot subscription. GitHub still
+              requires the app owner to register the sign-in app once.
             </p>
             <a
               href={oauthUrl}
@@ -182,10 +176,22 @@ export default function SetupPage() {
               <div className="mt-2 space-y-2">
                 <p>After creating the app, copy:</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li><strong>Client ID</strong> → <code>GITHUB_ID</code></li>
-                  <li><strong>Client Secret</strong> → <code>GITHUB_SECRET</code></li>
+                  <li>
+                    <strong>Client ID</strong> → <code>GITHUB_ID</code> or{" "}
+                    <code>GITHUB_CLIENT_ID</code>
+                  </li>
+                  <li>
+                    <strong>Client Secret</strong> → <code>GITHUB_SECRET</code> or{" "}
+                    <code>GITHUB_CLIENT_SECRET</code>
+                  </li>
                 </ul>
-                <p>Add both to <code>.env.local</code> or Vercel environment variables.</p>
+                <p>
+                  Add both to <code>.env.local</code> or Vercel environment variables.
+                </p>
+                <p>
+                  If you set <code>NEXTAUTH_URL</code>, use your QuestGen app URL (for example{" "}
+                  <code>https://your-app.vercel.app</code>), not an Upstash URL.
+                </p>
               </div>
             </details>
           </div>
@@ -216,8 +222,12 @@ export default function SetupPage() {
             <details className="text-xs opacity-70">
               <summary className="cursor-pointer text-[#ffb000]">Technical details</summary>
               <ul className="mt-2 list-disc list-inside space-y-1">
-                <li><strong>REST URL</strong> → <code>UPSTASH_REDIS_REST_URL</code></li>
-                <li><strong>REST Token</strong> → <code>UPSTASH_REDIS_REST_TOKEN</code></li>
+                <li>
+                  <strong>REST URL</strong> → <code>UPSTASH_REDIS_REST_URL</code>
+                </li>
+                <li>
+                  <strong>REST Token</strong> → <code>UPSTASH_REDIS_REST_TOKEN</code>
+                </li>
               </ul>
             </details>
           </div>
@@ -226,8 +236,8 @@ export default function SetupPage() {
         <PanelFrame title="STEP 4 — Recheck">
           <div className="space-y-2">
             <p className="text-xs opacity-70">
-              After saving the owner settings, restart your local dev server or redeploy
-              on Vercel, then recheck below.
+              After saving the owner settings, restart your local dev server or redeploy on Vercel,
+              then recheck below.
             </p>
             <button
               onClick={checkStatus}

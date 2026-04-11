@@ -48,6 +48,32 @@ describe("auth config", () => {
     vi.unstubAllEnvs();
   });
 
+  it("falls back to GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET", async () => {
+    vi.stubEnv("GITHUB_CLIENT_ID", "client-id");
+    vi.stubEnv("GITHUB_CLIENT_SECRET", "client-secret");
+    await import("./auth");
+
+    const config = mockNextAuth.mock.calls[0][0];
+    expect(config.providers[0].clientId).toBe("client-id");
+    expect(config.providers[0].clientSecret).toBe("client-secret");
+
+    vi.unstubAllEnvs();
+  });
+
+  it("prefers GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET when both pairs are set", async () => {
+    vi.stubEnv("GITHUB_ID", "legacy-id");
+    vi.stubEnv("GITHUB_SECRET", "legacy-secret");
+    vi.stubEnv("GITHUB_CLIENT_ID", "client-id");
+    vi.stubEnv("GITHUB_CLIENT_SECRET", "client-secret");
+    await import("./auth");
+
+    const config = mockNextAuth.mock.calls[0][0];
+    expect(config.providers[0].clientId).toBe("client-id");
+    expect(config.providers[0].clientSecret).toBe("client-secret");
+
+    vi.unstubAllEnvs();
+  });
+
   it("configures a custom auth error page", async () => {
     vi.stubEnv("GITHUB_ID", "test-id");
     vi.stubEnv("GITHUB_SECRET", "test-secret");
@@ -162,6 +188,14 @@ describe("auth config", () => {
   it("isAuthConfigured returns true when env vars set", async () => {
     vi.stubEnv("GITHUB_ID", "test-id");
     vi.stubEnv("GITHUB_SECRET", "test-secret");
+    const { isAuthConfigured } = await import("./auth");
+    expect(isAuthConfigured()).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
+  it("isAuthConfigured returns true when fallback env vars are set", async () => {
+    vi.stubEnv("GITHUB_CLIENT_ID", "test-id");
+    vi.stubEnv("GITHUB_CLIENT_SECRET", "test-secret");
     const { isAuthConfigured } = await import("./auth");
     expect(isAuthConfigured()).toBe(true);
     vi.unstubAllEnvs();

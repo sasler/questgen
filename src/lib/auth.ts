@@ -1,26 +1,25 @@
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 
-const githubId = process.env.GITHUB_ID;
-const githubSecret = process.env.GITHUB_SECRET;
+function getGitHubClientId(): string | undefined {
+  return process.env.GITHUB_CLIENT_ID ?? process.env.GITHUB_ID;
+}
+
+function getGitHubClientSecret(): string | undefined {
+  return process.env.GITHUB_CLIENT_SECRET ?? process.env.GITHUB_SECRET;
+}
 
 export function isAuthConfigured(): boolean {
-  return !!(githubId && githubSecret);
+  return !!(getGitHubClientId() && getGitHubClientSecret());
 }
 
 function normalizeUserId(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function resolveTokenUserId(token: {
-  userId?: unknown;
-  sub?: unknown;
-  email?: unknown;
-}) {
+function resolveTokenUserId(token: { userId?: unknown; sub?: unknown; email?: unknown }) {
   return (
-    normalizeUserId(token.userId) ??
-    normalizeUserId(token.sub) ??
-    normalizeUserId(token.email)
+    normalizeUserId(token.userId) ?? normalizeUserId(token.sub) ?? normalizeUserId(token.email)
   );
 }
 
@@ -33,8 +32,8 @@ const authResult = isAuthConfigured()
       },
       providers: [
         GitHub({
-          clientId: githubId!,
-          clientSecret: githubSecret!,
+          clientId: getGitHubClientId()!,
+          clientSecret: getGitHubClientSecret()!,
           issuer: "https://github.com/login/oauth",
           authorization: { params: { scope: "read:user user:email" } },
         }),
@@ -44,9 +43,7 @@ const authResult = isAuthConfigured()
           if (account) {
             token.accessToken = account.access_token;
             token.provider = account.provider;
-            token.userId =
-              resolveTokenUserId(token) ??
-              normalizeUserId(account.providerAccountId);
+            token.userId = resolveTokenUserId(token) ?? normalizeUserId(account.providerAccountId);
           } else if (!token.userId) {
             token.userId = resolveTokenUserId(token);
           }

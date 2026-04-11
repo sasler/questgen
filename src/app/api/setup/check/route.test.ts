@@ -31,7 +31,7 @@ beforeEach(() => {
 });
 
 describe("GET /api/setup/check", () => {
-  it("returns auth: false when GITHUB_ID is missing", async () => {
+  it("returns auth: false when GitHub OAuth env vars are missing", async () => {
     mockIsAuthConfigured.mockReturnValue(false);
     vi.stubEnv("AUTH_SECRET", "secret");
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
@@ -47,6 +47,20 @@ describe("GET /api/setup/check", () => {
     mockIsAuthConfigured.mockReturnValue(true);
     vi.stubEnv("GITHUB_ID", "id");
     vi.stubEnv("GITHUB_SECRET", "secret");
+    vi.stubEnv("AUTH_SECRET", "");
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+
+    const res = await GET(createRequest());
+    const data = await res.json();
+
+    expect(data.auth).toBe(true);
+  });
+
+  it("returns auth: true when GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are set", async () => {
+    mockIsAuthConfigured.mockReturnValue(true);
+    vi.stubEnv("GITHUB_CLIENT_ID", "id");
+    vi.stubEnv("GITHUB_CLIENT_SECRET", "secret");
     vi.stubEnv("AUTH_SECRET", "");
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");

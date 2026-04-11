@@ -15,8 +15,7 @@ function getMessage(error: string | null) {
     case "Configuration":
       return {
         title: "GitHub sign-in is configured incorrectly.",
-        body:
-          "GitHub rejected the OAuth client credentials for this QuestGen deployment.",
+        body: "GitHub rejected the OAuth client credentials for this QuestGen deployment.",
       };
     case "AccessDenied":
       return {
@@ -38,8 +37,8 @@ function getMessage(error: string | null) {
 
 function getConfigWarnings() {
   const warnings: string[] = [];
-  const githubId = process.env.GITHUB_ID?.trim();
-  const githubSecret = process.env.GITHUB_SECRET?.trim();
+  const githubId = (process.env.GITHUB_CLIENT_ID ?? process.env.GITHUB_ID)?.trim();
+  const githubSecret = (process.env.GITHUB_CLIENT_SECRET ?? process.env.GITHUB_SECRET)?.trim();
 
   if (githubId) {
     const looksLikeOauthClientId =
@@ -47,25 +46,21 @@ function getConfigWarnings() {
 
     if (!looksLikeOauthClientId) {
       warnings.push(
-        "GITHUB_ID does not look like a GitHub OAuth App Client ID. Use the Client ID, not the numeric App ID.",
+        "The configured GitHub client ID does not look like a GitHub OAuth App Client ID. Use the OAuth Client ID, not the numeric App ID.",
       );
     }
   }
 
   if (githubSecret && githubSecret.length < 36) {
     warnings.push(
-      `GITHUB_SECRET looks unusually short (${githubSecret.length} characters). Re-copy or regenerate the OAuth App client secret.`,
+      `The configured GitHub client secret looks unusually short (${githubSecret.length} characters). Re-copy or regenerate the OAuth App client secret.`,
     );
   }
 
   return warnings;
 }
 
-export default async function AuthErrorPage({
-  searchParams,
-}: {
-  searchParams?: SearchParams;
-}) {
+export default async function AuthErrorPage({ searchParams }: { searchParams?: SearchParams }) {
   const resolvedSearchParams = searchParams
     ? "then" in searchParams
       ? await searchParams
@@ -103,18 +98,22 @@ export default async function AuthErrorPage({
           <ol className="list-decimal list-inside space-y-2 text-sm text-[#00ff41]">
             <li>Use a **GitHub OAuth App**, not a GitHub App.</li>
             <li>
-              Set <code>GITHUB_ID</code> to the OAuth App <strong>Client ID</strong>, not the
-              numeric App ID.
+              Set either <code>GITHUB_ID</code> or <code>GITHUB_CLIENT_ID</code> to the OAuth App{" "}
+              <strong>Client ID</strong>, not the numeric App ID.
             </li>
             <li>
-              Set <code>GITHUB_SECRET</code> to the OAuth App <strong>Client Secret</strong>.
+              Set either <code>GITHUB_SECRET</code> or <code>GITHUB_CLIENT_SECRET</code> to the
+              OAuth App <strong>Client Secret</strong>.
             </li>
             <li>
-              Make sure the callback URL is exactly{" "}
-              <code>http://localhost:3000/api/auth/callback/github</code> for local
-              development.
+              Make sure the callback URL points at this QuestGen deployment&apos;s{" "}
+              <code>/api/auth/callback/github</code> route.
             </li>
-            <li>Restart the dev server after changing <code>.env.local</code>.</li>
+            <li>
+              If you set <code>NEXTAUTH_URL</code>, it must be your QuestGen app URL, not an Upstash
+              Redis URL.
+            </li>
+            <li>Restart the dev server or redeploy after changing environment variables.</li>
           </ol>
         </section>
 

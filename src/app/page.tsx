@@ -34,15 +34,14 @@ export default async function Home() {
 
         {/* Description */}
         <p className="text-[var(--terminal-dim)] text-sm text-center max-w-xl leading-relaxed">
-          QuestGen uses the GitHub Copilot SDK to generate entire text adventure
-          worlds on-the-fly. Every dungeon, puzzle, and snarky NPC is conjured
-          by AI — so no two playthroughs are ever the same. It&apos;s like Zork
-          met a large language model at a party and things escalated.
+          QuestGen uses the GitHub Copilot SDK to generate entire text adventure worlds on-the-fly.
+          Every dungeon, puzzle, and snarky NPC is conjured by AI — so no two playthroughs are ever
+          the same. It&apos;s like Zork met a large language model at a party and things escalated.
         </p>
         {!session && authConfigured && (
           <p className="text-[var(--terminal-dim)] text-xs text-center max-w-xl">
-            Players connect their own GitHub Copilot account. QuestGen does not use the
-            site owner&apos;s subscription on their behalf.
+            Players connect their own GitHub Copilot account. QuestGen does not use the site
+            owner&apos;s subscription on their behalf.
           </p>
         )}
         {!session && !authConfigured && (
@@ -67,17 +66,13 @@ export default async function Home() {
             >
               ▸ Connect GitHub Copilot
             </Link>
-          ) : showOwnerSetup ? (
+          ) : (
             <Link
               href="/setup"
               className="border border-[var(--terminal-amber)] text-[var(--terminal-amber)] px-6 py-3 text-center hover:bg-[var(--terminal-amber)] hover:text-black transition-colors"
             >
-              ▸ Owner Setup
+              {showOwnerSetup ? "▸ Owner Setup" : "▸ Deployment setup required"}
             </Link>
-          ) : (
-            <span className="border border-[var(--terminal-dim)] text-[var(--terminal-dim)] px-6 py-3 text-center">
-              ▸ Deployment setup required
-            </span>
           )}
           <Link
             href="/guide"
@@ -96,13 +91,10 @@ export default async function Home() {
             <li className="flex gap-3">
               <span className="text-[var(--terminal-amber)]">1.</span>
               <span>
-                <Link
-                  href="/guide"
-                  className="text-[var(--terminal-green)] underline"
-                >
+                <Link href="/guide" className="text-[var(--terminal-green)] underline">
                   Get GitHub Copilot (free)
-                </Link>
-                {" "}— your ticket to the improbability drive
+                </Link>{" "}
+                — your ticket to the improbability drive
               </span>
             </li>
             <li className="flex gap-3">
@@ -111,9 +103,7 @@ export default async function Home() {
             </li>
             <li className="flex gap-3">
               <span className="text-[var(--terminal-amber)]">3.</span>
-              <span>
-                Explore, solve puzzles, don&apos;t die — easier said than done
-              </span>
+              <span>Explore, solve puzzles, don&apos;t die — easier said than done</span>
             </li>
           </ol>
         </section>

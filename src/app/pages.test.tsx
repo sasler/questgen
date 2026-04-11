@@ -29,6 +29,7 @@ vi.mock("@/lib/auth", () => ({
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   mockIsAuthConfigured.mockReturnValue(true);
 });
 
@@ -71,6 +72,21 @@ describe("Landing Page", () => {
     const dashLink = screen.getByRole("link", { name: /dashboard/i });
     expect(dashLink).toHaveAttribute("href", "/dashboard");
   });
+
+  it("shows an actionable setup link in production when auth is not configured", async () => {
+    mockAuth.mockResolvedValue(null);
+    mockIsAuthConfigured.mockReturnValue(false);
+    vi.stubEnv("NODE_ENV", "production");
+
+    const { default: Page } = await import("./page");
+    const jsx = await Page();
+    render(jsx);
+
+    expect(screen.getByRole("link", { name: /deployment setup required/i })).toHaveAttribute(
+      "href",
+      "/setup",
+    );
+  });
 });
 
 // ---------- Not Found Page ----------
@@ -91,9 +107,7 @@ describe("Error Page", () => {
     const { default: ErrorPage } = await import("./error");
     const reset = vi.fn();
     render(<ErrorPage error={new Error("boom")} reset={reset} />);
-    expect(
-      screen.getByText(/improbability drive/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/improbability drive/i)).toBeInTheDocument();
     const retryBtn = screen.getByRole("button", { name: /try again/i });
     expect(retryBtn).toBeInTheDocument();
     const user = userEvent.setup();
@@ -112,6 +126,9 @@ describe("Auth Error Page", () => {
 
     expect(screen.getByText(/configured incorrectly/i)).toBeInTheDocument();
     expect(screen.getByText(/client id/i)).toBeInTheDocument();
+    expect(screen.getByText(/GITHUB_CLIENT_ID/i)).toBeInTheDocument();
+    expect(screen.getByText(/GITHUB_CLIENT_SECRET/i)).toBeInTheDocument();
+    expect(screen.getByText(/NEXTAUTH_URL/i)).toBeInTheDocument();
     expect(screen.getByText(/not the numeric app id/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /owner setup/i })).toHaveAttribute("href", "/setup");
   });

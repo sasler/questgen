@@ -78,31 +78,43 @@ cp .env.example .env.local
 ```
 
 Fill in:
+
 ```env
-GITHUB_ID=your_github_oauth_client_id
-GITHUB_SECRET=your_github_oauth_client_secret
+GITHUB_CLIENT_ID=your_github_oauth_client_id
+GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
 AUTH_SECRET=run_openssl_rand_base64_32
+NEXTAUTH_URL=http://localhost:3000
 UPSTASH_REDIS_REST_URL=your_upstash_url
 UPSTASH_REDIS_REST_TOKEN=your_upstash_token
 ```
 
+QuestGen accepts either `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` or
+`GITHUB_ID` / `GITHUB_SECRET`.
+
 Generate `AUTH_SECRET`:
+
 ```bash
 openssl rand -base64 32
 ```
 
 ## Deploy to Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fsasler%2Fquestgen&env=GITHUB_ID,GITHUB_SECRET,AUTH_SECRET,UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=See%20README%20for%20setup%20instructions)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fsasler%2Fquestgen&env=GITHUB_CLIENT_ID,GITHUB_CLIENT_SECRET,AUTH_SECRET,NEXTAUTH_URL,UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN&envDescription=See%20README%20for%20setup%20instructions)
 
 **One-time environment variables for the deployment owner:**
-- `GITHUB_ID` — the GitHub OAuth App **Client ID** (not the numeric App ID)
-- `GITHUB_SECRET` — from your GitHub OAuth App
+
+- `GITHUB_CLIENT_ID` or `GITHUB_ID` — the GitHub OAuth App **Client ID** (not the numeric App ID)
+- `GITHUB_CLIENT_SECRET` or `GITHUB_SECRET` — from your GitHub OAuth App
 - `AUTH_SECRET` — generate with `openssl rand -base64 32`
+- `NEXTAUTH_URL` — your QuestGen site URL, for example `https://your-domain.vercel.app`
 - `UPSTASH_REDIS_REST_URL` — from Upstash dashboard
 - `UPSTASH_REDIS_REST_TOKEN` — from Upstash dashboard
 
-**Important:** Update your GitHub OAuth App's callback URL to `https://your-domain.vercel.app/api/auth/callback/github`.
+`GITHUB_ID` / `GITHUB_SECRET` are also supported for compatibility, but the
+`GITHUB_CLIENT_*` names are recommended for new deployments.
+
+**Important:** `NEXTAUTH_URL` must be the QuestGen app URL, not your Upstash URL. Update your
+GitHub OAuth App's callback URL to `https://your-domain.vercel.app/api/auth/callback/github`.
 
 After this is configured once, players just click **Connect GitHub Copilot** and use their own subscription.
 
@@ -124,15 +136,15 @@ After this is configured once, players just click **Connect GitHub Copilot** and
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| Framework | Next.js 15 (App Router) |
-| Language | TypeScript (strict) |
-| Styling | Tailwind CSS v4 |
-| AI | GitHub Copilot SDK + BYOK |
-| Auth | NextAuth.js v5 + GitHub OAuth |
-| Storage | Upstash Redis |
-| Testing | Vitest + React Testing Library + Playwright |
+| Component | Technology                                  |
+| --------- | ------------------------------------------- |
+| Framework | Next.js 15 (App Router)                     |
+| Language  | TypeScript (strict)                         |
+| Styling   | Tailwind CSS v4                             |
+| AI        | GitHub Copilot SDK + BYOK                   |
+| Auth      | NextAuth.js v5 + GitHub OAuth               |
+| Storage   | Upstash Redis                               |
+| Testing   | Vitest + React Testing Library + Playwright |
 
 ## Development
 

@@ -35,9 +35,10 @@ npx playwright test   # E2E tests (requires dev server running)
 - **Local context only** — only current room + neighbors sent to AI per turn
 - **Settings in localStorage** — BYOK keys never sent to server-side storage
 - **Split Redis keys** — world, player, history, settings, metadata stored separately
-- **Deployer vs player UX** — regular players should only see Connect GitHub Copilot; `/setup` is owner-only
+- **Deployer vs player UX** — regular players should normally only see Connect GitHub Copilot; when deployment auth is missing, the landing page should still provide an actionable path to `/setup`
 - **Unified settings** — all client settings flow through `src/lib/settings.ts` (single source of truth)
 - **Copilot status checks stay lightweight** — do not boot the Copilot SDK or call `listModels()` from simple status endpoints; only actual model-loading paths should start the CLI/runtime
+- **Deployment auth env compatibility** — accept both `GITHUB_ID` / `GITHUB_SECRET` and `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`; docs should prefer the `GITHUB_CLIENT_*` names, and `NEXTAUTH_URL` must point at the QuestGen app URL, not Upstash
 
 ## Key Directories
 

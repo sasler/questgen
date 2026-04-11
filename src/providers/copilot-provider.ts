@@ -1,5 +1,6 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
 import type { AssistantMessageEvent } from "@github/copilot-sdk";
@@ -73,10 +74,30 @@ function resolveCopilotCliPath(): string {
   );
 }
 
+function buildCopilotCliEnv(): Record<string, string | undefined> {
+  const baseTempDir = join(tmpdir(), "questgen-copilot");
+  const homeDir = join(baseTempDir, "home");
+  const cacheDir = join(baseTempDir, "cache");
+
+  mkdirSync(homeDir, { recursive: true });
+  mkdirSync(cacheDir, { recursive: true });
+
+  return {
+    ...process.env,
+    HOME: homeDir,
+    USERPROFILE: homeDir,
+    TMPDIR: tmpdir(),
+    COPILOT_HOME: homeDir,
+    COPILOT_CACHE_HOME: cacheDir,
+    XDG_CACHE_HOME: cacheDir,
+  };
+}
+
 function createClient(config: AIProviderConfig): CopilotClient {
   const options: ConstructorParameters<typeof CopilotClient>[0] = {
     autoStart: false,
     cliPath: resolveCopilotCliPath(),
+    env: buildCopilotCliEnv(),
   };
 
   if (config.mode === "copilot" && config.githubToken) {

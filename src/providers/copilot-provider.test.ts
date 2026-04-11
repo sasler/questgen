@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import type { AIProviderConfig, AICompletionOptions } from "./types";
 
 // Mock the SDK before importing the provider
@@ -154,6 +156,32 @@ describe("CopilotProvider", () => {
           useLoggedInUser: false,
         }),
       );
+    });
+
+    it("passes temp-backed home and cache directories to the Copilot CLI environment", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({
+        data: { content: "response" },
+      });
+
+      await provider.generateCompletion("test", options, copilotConfig);
+
+      expect(constructedClients[0]?.options).toEqual(
+        expect.objectContaining({
+          env: expect.objectContaining({
+            HOME: expect.stringContaining(tmpdir()),
+            USERPROFILE: expect.stringContaining(tmpdir()),
+            COPILOT_HOME: expect.stringContaining(tmpdir()),
+            COPILOT_CACHE_HOME: expect.stringContaining(tmpdir()),
+            XDG_CACHE_HOME: expect.stringContaining(tmpdir()),
+          }),
+        }),
+      );
+
+      const env = (constructedClients[0]?.options as { env?: Record<string, string> })?.env;
+      expect(env?.HOME ? existsSync(env.HOME) : false).toBe(true);
+      expect(env?.COPILOT_CACHE_HOME ? existsSync(env.COPILOT_CACHE_HOME) : false).toBe(true);
     });
 
     it("prefers COPILOT_CLI_PATH when explicitly configured", async () => {

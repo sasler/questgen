@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { auth, isAuthConfigured } from "@/lib/auth";
 
 const ASCII_TITLE = `
  ██████  ██    ██ ███████ ███████ ████████  ██████  ███████ ███    ██
@@ -12,6 +12,8 @@ const ASCII_TITLE = `
 
 export default async function Home() {
   const session = await auth();
+  const authConfigured = isAuthConfigured();
+  const showOwnerSetup = !authConfigured && process.env.NODE_ENV !== "production";
 
   return (
     <div className="flex flex-col flex-1 items-center px-4 py-12">
@@ -37,6 +39,17 @@ export default async function Home() {
           by AI — so no two playthroughs are ever the same. It&apos;s like Zork
           met a large language model at a party and things escalated.
         </p>
+        {!session && authConfigured && (
+          <p className="text-[var(--terminal-dim)] text-xs text-center max-w-xl">
+            Players connect their own GitHub Copilot account. QuestGen does not use the
+            site owner&apos;s subscription on their behalf.
+          </p>
+        )}
+        {!session && !authConfigured && (
+          <p className="text-[var(--terminal-amber)] text-xs text-center max-w-xl">
+            This copy of QuestGen is not ready for GitHub Copilot sign-in yet.
+          </p>
+        )}
 
         {/* CTAs */}
         <div className="flex flex-col sm:flex-row gap-4 mt-2">
@@ -47,13 +60,24 @@ export default async function Home() {
             >
               ▸ Dashboard
             </Link>
-          ) : (
+          ) : authConfigured ? (
             <Link
               href="/api/auth/signin"
               className="border border-[var(--terminal-green)] text-[var(--terminal-green)] px-6 py-3 text-center hover:bg-[var(--terminal-green)] hover:text-black transition-colors"
             >
-              ▸ Sign In with GitHub
+              ▸ Connect GitHub Copilot
             </Link>
+          ) : showOwnerSetup ? (
+            <Link
+              href="/setup"
+              className="border border-[var(--terminal-amber)] text-[var(--terminal-amber)] px-6 py-3 text-center hover:bg-[var(--terminal-amber)] hover:text-black transition-colors"
+            >
+              ▸ Owner Setup
+            </Link>
+          ) : (
+            <span className="border border-[var(--terminal-dim)] text-[var(--terminal-dim)] px-6 py-3 text-center">
+              ▸ Deployment setup required
+            </span>
           )}
           <Link
             href="/guide"

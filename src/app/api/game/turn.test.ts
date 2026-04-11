@@ -146,6 +146,32 @@ describe("POST /api/game/[id]/turn", () => {
     expect(body).toEqual(mockTurnResult);
   });
 
+  it("accepts email-backed ownership when session user.id is missing", async () => {
+    mockAuth.mockResolvedValue({
+      user: { email: "test@test.com", name: "Test" },
+      accessToken: "gh-token-abc",
+    });
+    mockGetMetadata.mockResolvedValue({
+      ...mockMetadata,
+      userId: "test@test.com",
+    });
+
+    const res = await POST(
+      makeRequest({ input: "go north", turnId: "t1" }),
+      makeParams(),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockProcessTurn).toHaveBeenCalledWith(
+      "game-1",
+      "go north",
+      "t1",
+      { mode: "copilot", githubToken: "gh-token-abc" },
+      mockSettings,
+      expect.anything(),
+    );
+  });
+
   it("passes correct aiConfig for copilot mode", async () => {
     await POST(
       makeRequest({ input: "go north", turnId: "t1" }),

@@ -1,3 +1,6 @@
+import { existsSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
 import type { AssistantMessageEvent } from "@github/copilot-sdk";
 import type {
@@ -19,6 +22,8 @@ import type {
  * kills only the launcher, not its child.
  */
 const clientPool = new Map<string, Promise<CopilotClient>>();
+const appRequire = createRequire(join(process.cwd(), "package.json"));
+let cachedCliPath: string | null = null;
 
 function getConfigKey(config: AIProviderConfig): string {
   if (config.mode === "copilot") {
@@ -27,9 +32,41 @@ function getConfigKey(config: AIProviderConfig): string {
   return `byok:${config.byokType ?? ""}:${config.byokBaseUrl ?? ""}:${config.byokApiKey ?? ""}`;
 }
 
+function resolveCopilotCliPath(): string {
+  const configuredPath = process.env.COPILOT_CLI_PATH?.trim();
+  if (configuredPath) {
+    return configuredPath;
+  }
+
+  if (cachedCliPath) {
+    return cachedCliPath;
+  }
+
+  const candidates = new Set<string>();
+
+  try {
+    const sdkEntry = appRequire.resolve("@github/copilot/sdk");
+    candidates.add(join(dirname(dirname(sdkEntry)), "index.js"));
+  } catch {}
+
+  candidates.add(join(process.cwd(), "node_modules", "@github", "copilot", "index.js"));
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      cachedCliPath = realpathSync(candidate);
+      return cachedCliPath;
+    }
+  }
+
+  throw new Error(
+    "Could not resolve the @github/copilot CLI path. Ensure @github/copilot is installed, or set COPILOT_CLI_PATH.",
+  );
+}
+
 function createClient(config: AIProviderConfig): CopilotClient {
   const options: ConstructorParameters<typeof CopilotClient>[0] = {
     autoStart: false,
+    cliPath: resolveCopilotCliPath(),
   };
 
   if (config.mode === "copilot" && config.githubToken) {

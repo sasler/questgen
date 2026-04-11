@@ -6,12 +6,12 @@ test.describe("Smoke tests", () => {
     await expect(page).toHaveTitle(/QuestGen/i);
   });
 
-  test("landing page redirects to setup when auth is not configured", async ({
+  test("landing page stays public when auth is not configured", async ({
     page,
   }) => {
     await page.goto("/");
-    // Without auth env vars, middleware redirects to /setup
-    await expect(page).toHaveURL(/\/setup/);
-    await expect(page.locator("body")).toContainText(/SYSTEM INITIALIZATION/i);
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.locator("body")).toContainText(/OWNER SETUP/i);
+    await expect(page.locator("body")).toContainText(/not ready for github copilot sign-in yet/i);
   });
 });

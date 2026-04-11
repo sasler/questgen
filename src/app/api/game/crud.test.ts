@@ -33,7 +33,7 @@ import { GET as GET_GAME, DELETE as DELETE_GAME } from "@/app/api/game/[id]/rout
 // Fixtures
 // ---------------------------------------------------------------------------
 const userId = "user@example.com";
-const session = { user: { email: userId } };
+const session = { user: { id: "github-user-123", email: userId } };
 
 function makeMetadata(overrides: Partial<GameMetadata> = {}): GameMetadata {
   return {
@@ -144,6 +144,33 @@ describe("GET /api/games", () => {
     expect(body.games).toHaveLength(1);
     expect(body.games[0].id).toBe("g1");
   });
+
+  it("merges games indexed by either session user.id or email", async () => {
+    mockAuth.mockResolvedValue(session);
+    mockStorage.getUserGames
+      .mockResolvedValueOnce(["email-game", "shared-game"])
+      .mockResolvedValueOnce(["id-game", "shared-game"]);
+    mockStorage.getMetadata
+      .mockResolvedValueOnce(makeMetadata({ id: "email-game", userId }))
+      .mockResolvedValueOnce(
+        makeMetadata({ id: "shared-game", userId: session.user.id }),
+      )
+      .mockResolvedValueOnce(
+        makeMetadata({ id: "id-game", userId: session.user.id }),
+      );
+
+    const res = await GET(gamesRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockStorage.getUserGames).toHaveBeenNthCalledWith(1, session.user.id);
+    expect(mockStorage.getUserGames).toHaveBeenNthCalledWith(2, userId);
+    expect(body.games.map((g: GameMetadata) => g.id).sort()).toEqual([
+      "email-game",
+      "id-game",
+      "shared-game",
+    ]);
+  });
 });
 
 describe("GET /api/game/[id]", () => {
@@ -185,6 +212,22 @@ describe("GET /api/game/[id]", () => {
     expect(body.history).toEqual(sampleHistory);
     expect(body.settings).toEqual(sampleSettings);
   });
+
+  it("returns full game state for games owned by session user.id", async () => {
+    mockAuth.mockResolvedValue(session);
+    const meta = makeMetadata({ userId: session.user.id });
+    mockStorage.getMetadata.mockResolvedValue(meta);
+    mockStorage.getWorld.mockResolvedValue(sampleWorld);
+    mockStorage.getPlayerState.mockResolvedValue(samplePlayer);
+    mockStorage.getHistory.mockResolvedValue(sampleHistory);
+    mockStorage.getSettings.mockResolvedValue(sampleSettings);
+
+    const res = await GET_GAME(gameRequest("game-1"), gameParams("game-1"));
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.metadata).toEqual(meta);
+  });
 });
 
 describe("DELETE /api/game/[id]", () => {
@@ -218,5 +261,24 @@ describe("DELETE /api/game/[id]", () => {
     const body = await res.json();
     expect(body.deleted).toBe(true);
     expect(mockStorage.deleteGame).toHaveBeenCalledWith("game-1", userId);
+  });
+
+  it("deletes games indexed by session user.id using the stored owner id", async () => {
+    mockAuth.mockResolvedValue(session);
+    mockStorage.getMetadata.mockResolvedValue(
+      makeMetadata({ userId: session.user.id }),
+    );
+    mockStorage.deleteGame.mockResolvedValue(undefined);
+
+    const res = await DELETE_GAME(
+      gameRequest("game-1", "DELETE"),
+      gameParams("game-1"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockStorage.deleteGame).toHaveBeenCalledWith(
+      "game-1",
+      session.user.id,
+    );
   });
 });

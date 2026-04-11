@@ -2,6 +2,8 @@
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
+On this Next.js version, `middleware.ts` is deprecated and `proxy.ts` is the correct file convention. Never add both entrypoints at once; keep a single `src/proxy.ts` file and read the relevant `node_modules/next/dist/docs/` proxy docs before changing file conventions.
 <!-- END:nextjs-agent-rules -->
 
 # QuestGen Agent Workflow
@@ -33,8 +35,9 @@ npx playwright test   # E2E tests (requires dev server running)
 - **Local context only** — only current room + neighbors sent to AI per turn
 - **Settings in localStorage** — BYOK keys never sent to server-side storage
 - **Split Redis keys** — world, player, history, settings, metadata stored separately
-- **Graceful degradation** — when auth env vars are missing, app redirects to /setup wizard
+- **Deployer vs player UX** — regular players should only see Connect GitHub Copilot; `/setup` is owner-only
 - **Unified settings** — all client settings flow through `src/lib/settings.ts` (single source of truth)
+- **Copilot status checks stay lightweight** — do not boot the Copilot SDK or call `listModels()` from simple status endpoints; only actual model-loading paths should start the CLI/runtime
 
 ## Key Directories
 
@@ -50,7 +53,7 @@ npx playwright test   # E2E tests (requires dev server running)
 ## Key Pages
 
 - `/` — Landing page (auth-aware)
-- `/setup` — Setup wizard (shown when env vars not configured)
+- `/setup` — Owner-only deployment setup
 - `/settings` — AI provider config, model selection, connection status
 - `/guide` — How to get GitHub Copilot (free tier instructions)
 - `/new-game` — New game creation wizard

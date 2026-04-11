@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
 
 // Mock @/lib/auth before importing route
 vi.mock("@/lib/auth", () => ({
@@ -20,6 +21,10 @@ import { GET } from "./route";
 
 const mockIsAuthConfigured = vi.mocked(isAuthConfigured);
 
+function createRequest(url = "http://localhost:3000/api/setup/check") {
+  return new NextRequest(url);
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -32,7 +37,7 @@ describe("GET /api/setup/check", () => {
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
 
-    const res = await GET();
+    const res = await GET(createRequest());
     const data = await res.json();
 
     expect(data.auth).toBe(false);
@@ -46,7 +51,7 @@ describe("GET /api/setup/check", () => {
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
 
-    const res = await GET();
+    const res = await GET(createRequest());
     const data = await res.json();
 
     expect(data.auth).toBe(true);
@@ -58,7 +63,7 @@ describe("GET /api/setup/check", () => {
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
 
-    const res = await GET();
+    const res = await GET(createRequest());
     const data = await res.json();
 
     expect(data.secret).toBe(true);
@@ -70,7 +75,7 @@ describe("GET /api/setup/check", () => {
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
 
-    const res = await GET();
+    const res = await GET(createRequest());
     const data = await res.json();
 
     expect(data.redis).toBe(false);
@@ -83,7 +88,7 @@ describe("GET /api/setup/check", () => {
     vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://redis.upstash.io");
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "token123");
 
-    const res = await GET();
+    const res = await GET(createRequest());
     const data = await res.json();
 
     expect(data.auth).toBe(true);
@@ -91,5 +96,16 @@ describe("GET /api/setup/check", () => {
     expect(data.redis).toBe(true);
     expect(data.redisConnected).toBe(true);
     expect(data.allConfigured).toBe(true);
+  });
+
+  it("returns 403 for non-localhost requests", async () => {
+    mockIsAuthConfigured.mockReturnValue(true);
+
+    const res = await GET(createRequest("https://questgen.example.com/api/setup/check"));
+
+    expect(res.status).toBe(403);
+    await expect(res.json()).resolves.toEqual({
+      error: "Live setup checks are only available on localhost.",
+    });
   });
 });

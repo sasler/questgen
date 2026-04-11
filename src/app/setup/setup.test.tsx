@@ -52,7 +52,8 @@ describe("Setup Page", () => {
   it("renders page title", async () => {
     mockFetchResponse(unconfiguredResponse);
     render(<SetupPage />);
-    expect(screen.getByText(/SYSTEM INITIALIZATION/i)).toBeInTheDocument();
+    expect(await screen.findByText(/SYSTEM INITIALIZATION/i)).toBeInTheDocument();
+    expect(await screen.findByText(/only for the person deploying questgen/i)).toBeInTheDocument();
   });
 
   it("shows loading state while checking", async () => {
@@ -121,11 +122,11 @@ describe("Setup Page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("link", { name: /create oauth app/i })
+        screen.getByRole("link", { name: /create github oauth app/i })
       ).toBeInTheDocument();
     });
 
-    const oauthLink = screen.getByRole("link", { name: /create oauth app/i });
+    const oauthLink = screen.getByRole("link", { name: /create github oauth app/i });
     const href = oauthLink.getAttribute("href")!;
     expect(href).toContain("github.com/settings/applications/new");
     expect(href).toContain("callback_url");

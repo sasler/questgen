@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { auth, isAuthConfigured } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
 export async function GET() {
+  const authConfigured = isAuthConfigured();
   const session = await auth();
 
   if (!session?.user) {
     return NextResponse.json({
+      authConfigured,
       github: { connected: false },
       copilot: { available: false },
     });
@@ -19,28 +21,11 @@ export async function GET() {
     avatar: session.user.image ?? null,
   };
 
-  let copilotAvailable = false;
-  let copilotError: string | null = null;
-
-  if (session.accessToken) {
-    try {
-      const { getAIProvider } = await import("@/providers");
-      const provider = getAIProvider();
-      const models = await provider.listModels({
-        mode: "copilot",
-        githubToken: session.accessToken,
-      });
-      copilotAvailable = models.length > 0;
-    } catch (err) {
-      copilotError = err instanceof Error ? err.message : "Unknown error";
-    }
-  }
-
   return NextResponse.json({
+    authConfigured,
     github: githubStatus,
     copilot: {
-      available: copilotAvailable,
-      error: copilotError,
+      available: Boolean(session.accessToken),
     },
   });
 }

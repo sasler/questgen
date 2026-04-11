@@ -110,7 +110,7 @@ export default function GuidePage() {
               Step 3: Return to QuestGen and Sign In
             </p>
             <p className="ml-4 mt-1">
-              Come back here and sign in with your GitHub account.
+              Come back here and click <strong>Connect GitHub Copilot</strong>.
               The system will detect your Copilot access automatically.
               No forms to fill. No secret handshakes. No Vogon poetry.
             </p>
@@ -183,10 +183,10 @@ export default function GuidePage() {
       {/* Back link */}
       <div className="text-center my-8">
         <Link
-          href="/setup"
+          href="/"
           className="text-[var(--terminal-amber)] underline hover:brightness-125 text-sm"
         >
-          → First-Time Setup Wizard
+          → Back to QuestGen
         </Link>
         <span className="mx-3 text-[var(--terminal-dim)]">|</span>
         <Link
@@ -200,7 +200,7 @@ export default function GuidePage() {
           href="/"
           className="text-[var(--terminal-amber)] underline hover:brightness-125 text-sm"
         >
-          ← Back to Dashboard
+          ← Home
         </Link>
         <p className="mt-2 text-xs text-[var(--terminal-dim)]">
           So long, and thanks for all the fish.

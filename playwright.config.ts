@@ -22,5 +22,13 @@ export default defineConfig({
     url: "http://localhost:3100",
     reuseExistingServer: !process.env.CI,
     timeout: 120000,
+    env: {
+      ...process.env,
+      GITHUB_ID: "",
+      GITHUB_SECRET: "",
+      AUTH_SECRET: "playwright-auth-secret",
+      NEXTAUTH_URL: "http://localhost:3100",
+      AUTH_TRUST_HOST: "true",
+    },
   },
 });

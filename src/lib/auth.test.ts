@@ -15,7 +15,7 @@ vi.mock("next-auth", () => ({
 }));
 
 vi.mock("next-auth/providers/github", () => ({
-  default: vi.fn((opts: unknown) => ({ id: "github", ...opts })),
+  default: vi.fn((opts: Record<string, unknown> = {}) => ({ id: "github", ...opts })),
 }));
 
 describe("auth config", () => {
@@ -37,6 +37,39 @@ describe("auth config", () => {
     vi.unstubAllEnvs();
   });
 
+  it("configures the GitHub provider with the GitHub OAuth issuer", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
+    await import("./auth");
+
+    const config = mockNextAuth.mock.calls[0][0];
+    expect(config.providers[0].issuer).toBe("https://github.com/login/oauth");
+
+    vi.unstubAllEnvs();
+  });
+
+  it("configures a custom auth error page", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
+    await import("./auth");
+
+    const config = mockNextAuth.mock.calls[0][0];
+    expect(config.pages.error).toBe("/auth/error");
+
+    vi.unstubAllEnvs();
+  });
+
+  it("trusts the current host for local and proxied auth callbacks", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
+    await import("./auth");
+
+    const config = mockNextAuth.mock.calls[0][0];
+    expect(config.trustHost).toBe(true);
+
+    vi.unstubAllEnvs();
+  });
+
   it("jwt callback stores access token from account", async () => {
     vi.stubEnv("GITHUB_ID", "test-id");
     vi.stubEnv("GITHUB_SECRET", "test-secret");
@@ -54,6 +87,22 @@ describe("auth config", () => {
     const result = await jwtCallback({ token, account });
     expect(result.accessToken).toBe("gho_test_token_abc");
     expect(result.provider).toBe("github");
+    vi.unstubAllEnvs();
+  });
+
+  it("jwt callback stores a stable user id from token sub or provider account id", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
+    await import("./auth");
+    const config = mockNextAuth.mock.calls[0][0];
+    const jwtCallback = config.callbacks.jwt;
+
+    const result = await jwtCallback({
+      token: { sub: "github-user-123" },
+      account: { providerAccountId: "provider-user-999" },
+    });
+
+    expect(result.userId).toBe("github-user-123");
     vi.unstubAllEnvs();
   });
 
@@ -88,6 +137,25 @@ describe("auth config", () => {
 
     const result = await sessionCallback({ session, token });
     expect(result.accessToken).toBe("gho_test_token_abc");
+    vi.unstubAllEnvs();
+  });
+
+  it("session callback hydrates session.user.id from the token", async () => {
+    vi.stubEnv("GITHUB_ID", "test-id");
+    vi.stubEnv("GITHUB_SECRET", "test-secret");
+    await import("./auth");
+    const config = mockNextAuth.mock.calls[0][0];
+    const sessionCallback = config.callbacks.session;
+
+    const session = {
+      user: { name: "Test", email: "test@example.com" },
+      expires: "2099-01-01",
+    };
+    const token = { userId: "github-user-123", sub: "github-user-123" };
+
+    const result = await sessionCallback({ session, token });
+
+    expect(result.user.id).toBe("github-user-123");
     vi.unstubAllEnvs();
   });
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getPrimarySessionOwnerId } from "@/lib/auth-utils";
 import { generateWorld } from "@/lib/world-gen";
 import {
   GameGenerationRequestSchema,
@@ -23,6 +24,11 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = getPrimarySessionOwnerId(session);
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -42,7 +48,6 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { request, settings, byokApiKey } = parsed.data;
-  const userId = session.user.id ?? session.user.email ?? "anonymous";
 
   let aiConfig: AIProviderConfig;
   if (settings.provider === "copilot") {

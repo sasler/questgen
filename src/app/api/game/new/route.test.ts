@@ -51,7 +51,7 @@ describe("POST /api/game/new", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    mockedAuth.mockResolvedValue(null);
+    mockedAuth.mockResolvedValue(null as never);
 
     const res = await POST(makeRequest(validBody));
     const body = await res.json();

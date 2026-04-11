@@ -14,7 +14,7 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
-function unconfiguredMiddleware(req: NextRequest) {
+function unconfiguredProxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (isPublicPath(pathname)) {
@@ -24,7 +24,7 @@ function unconfiguredMiddleware(req: NextRequest) {
   return NextResponse.redirect(new URL("/", req.nextUrl.origin));
 }
 
-const configuredMiddleware = auth((req) => {
+const configuredProxy = auth((req) => {
   const isLoggedIn = !!req.auth;
   const { pathname } = req.nextUrl;
 
@@ -41,12 +41,12 @@ const configuredMiddleware = auth((req) => {
   return NextResponse.next();
 });
 
-export default function middleware(req: NextRequest) {
+export default function proxy(req: NextRequest) {
   if (!isAuthConfigured()) {
-    return unconfiguredMiddleware(req);
+    return unconfiguredProxy(req);
   }
 
-  return (configuredMiddleware as (req: NextRequest) => ReturnType<typeof unconfiguredMiddleware>)(req);
+  return (configuredProxy as (req: NextRequest) => ReturnType<typeof unconfiguredProxy>)(req);
 }
 
 export const config = {

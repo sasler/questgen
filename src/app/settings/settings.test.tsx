@@ -15,11 +15,19 @@ const mockModels = [
 ];
 
 const connectedStatus = {
+  authConfigured: true,
   github: { connected: true, username: "testuser", avatar: "https://avatar.url" },
   copilot: { available: true },
 };
 
 const disconnectedStatus = {
+  authConfigured: true,
+  github: { connected: false },
+  copilot: { available: false },
+};
+
+const unconfiguredDeploymentStatus = {
+  authConfigured: false,
   github: { connected: false },
   copilot: { available: false },
 };
@@ -41,6 +49,138 @@ function createMockFetch(statusOverride?: Record<string, unknown>) {
           generation: mockModels[0],
           gameplay: mockModels[1],
         },
+      }),
+    });
+  });
+}
+
+function createFailingStatusFetch() {
+  return vi.fn().mockImplementation((url: string) => {
+    if (url === "/api/copilot/status") {
+      return Promise.resolve({
+        ok: false,
+        json: async () => ({ error: "unavailable" }),
+      });
+    }
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        models: mockModels,
+        recommended: {
+          generation: mockModels[0],
+          gameplay: mockModels[1],
+        },
+      }),
+    });
+  });
+}
+
+function createFlakyStatusFetch() {
+  let statusCalls = 0;
+
+  return vi.fn().mockImplementation((url: string) => {
+    if (url === "/api/copilot/status") {
+      statusCalls += 1;
+
+      if (statusCalls === 1) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => connectedStatus,
+        });
+      }
+
+      return Promise.resolve({
+        ok: false,
+        json: async () => ({ error: "unavailable" }),
+      });
+    }
+
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        models: mockModels,
+        recommended: {
+          generation: mockModels[0],
+          gameplay: mockModels[1],
+        },
+      }),
+    });
+  });
+}
+
+function createCopilotRuntimeFailureFetch() {
+  return vi.fn().mockImplementation((url: string) => {
+    if (url === "/api/copilot/status") {
+      return Promise.resolve({
+        ok: true,
+        json: async () => connectedStatus,
+      });
+    }
+
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        models: [],
+        recommended: {
+          generation: null,
+          gameplay: null,
+        },
+        error:
+          "Could not resolve the @github/copilot CLI path. Ensure @github/copilot is installed, or set COPILOT_CLI_PATH.",
+      }),
+    });
+  });
+}
+
+function createCopilotModelErrorFetch(error = "Could not find @github/copilot package.") {
+  return vi.fn().mockImplementation((url: string) => {
+    if (url === "/api/copilot/status") {
+      return Promise.resolve({
+        ok: true,
+        json: async () => connectedStatus,
+      });
+    }
+
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        models: [],
+        recommended: {
+          generation: null,
+          gameplay: null,
+        },
+        error,
+      }),
+    });
+  });
+}
+
+function createPendingStatusFetch() {
+  return vi.fn().mockImplementation(() => new Promise(() => {}));
+}
+
+function createConnectedWithoutTokenModelErrorFetch() {
+  return vi.fn().mockImplementation((url: string) => {
+    if (url === "/api/copilot/status") {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          authConfigured: true,
+          github: { connected: true, username: "testuser" },
+          copilot: { available: false },
+        }),
+      });
+    }
+
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        models: [],
+        recommended: {
+          generation: null,
+          gameplay: null,
+        },
+        error: "QuestGen couldn't load models right now.",
       }),
     });
   });
@@ -192,7 +332,35 @@ describe("SettingsPage", () => {
 
     expect(await screen.findByText(/connected as/i)).toBeInTheDocument();
     expect(screen.getByText("testuser")).toBeInTheDocument();
-    expect(screen.getByText(/available ✓/i)).toBeInTheDocument();
+    expect(screen.getByText(/player's own subscription/i)).toBeInTheDocument();
+  });
+
+  it("shows a loading state before the first status response instead of the owner setup warning", () => {
+    vi.stubGlobal("fetch", createPendingStatusFetch());
+
+    render(<SettingsPage />);
+
+    expect(screen.getByText(/checking connection/i)).toBeInTheDocument();
+    expect(screen.queryByText(/isn't enabled on this deployment/i)).not.toBeInTheDocument();
+  });
+
+  it("shows reconnect and retry actions when Copilot model loading fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      createCopilotModelErrorFetch("Could not find @github/copilot package. Searched 8 paths."),
+    );
+
+    render(<SettingsPage />);
+
+    expect(
+      await screen.findByText(/questgen couldn't load copilot models/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/deployment couldn't start the copilot runtime/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /reconnect github copilot/i })).toHaveAttribute(
+      "href",
+      "/api/auth/signin?callbackUrl=%2Fsettings",
+    );
+    expect(screen.getAllByRole("button", { name: /retry model load/i }).length).toBeGreaterThan(0);
   });
 
   it("shows 'Not connected' when no session", async () => {
@@ -200,12 +368,46 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage />);
 
-    expect(await screen.findByText(/not connected/i)).toBeInTheDocument();
-    expect(screen.getByText(/not available/i)).toBeInTheDocument();
-    expect(screen.getByText(/how to get copilot/i)).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /connect github copilot/i })).toBeInTheDocument();
+    expect(screen.getByText(/no api key needed/i)).toBeInTheDocument();
   });
 
-  it("Test Connection button triggers re-fetch", async () => {
+  it("shows deployer-only setup message when GitHub sign-in is unavailable on this deployment", async () => {
+    vi.stubGlobal("fetch", createMockFetch(unconfiguredDeploymentStatus));
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText(/isn.t enabled on this deployment/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /owner setup/i })).toHaveAttribute("href", "/setup");
+    expect(screen.queryByRole("link", { name: /connect github copilot/i })).not.toBeInTheDocument();
+  });
+
+  it("shows a transient status error instead of the owner-setup message when status fetch fails", async () => {
+    vi.stubGlobal("fetch", createFailingStatusFetch());
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText(/couldn't check github copilot status/i)).toBeInTheDocument();
+    expect(screen.queryByText(/isn't enabled on this deployment/i)).not.toBeInTheDocument();
+  });
+
+  it("shows a stale-status warning when refresh fails after an earlier success", async () => {
+    vi.stubGlobal("fetch", createFlakyStatusFetch());
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await screen.findByText(/connected as/i);
+    await user.click(screen.getByRole("button", { name: /refresh status/i }));
+
+    expect(
+      await screen.findByText(/details below may be stale/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/connected as/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /refresh status/i })).toBeInTheDocument();
+  });
+
+  it("Refresh status button triggers re-fetch", async () => {
     const mockFetch = createMockFetch();
     vi.stubGlobal("fetch", mockFetch);
     const user = userEvent.setup();
@@ -219,7 +421,7 @@ describe("SettingsPage", () => {
       (c: string[]) => c[0] === "/api/copilot/status",
     ).length;
 
-    const testBtn = screen.getByRole("button", { name: /test connection/i });
+    const testBtn = screen.getByRole("button", { name: /refresh status/i });
     await user.click(testBtn);
 
     await waitFor(() => {
@@ -228,6 +430,35 @@ describe("SettingsPage", () => {
       ).length;
       expect(newCalls).toBeGreaterThan(statusCalls);
     });
+  });
+
+  it("shows runtime recovery actions instead of blaming account entitlement when Copilot model loading fails", async () => {
+    vi.stubGlobal("fetch", createCopilotRuntimeFailureFetch());
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText(/connected as/i)).toBeInTheDocument();
+    expect(await screen.findByText(/couldn't load copilot models/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/could not resolve the @github\/copilot cli path/i).length).toBeGreaterThan(0);
+    expect(
+      screen.queryByText(/copilot is not available for this account/i),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /retry model load/i }).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /refresh status/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /disconnect github/i })).toBeInTheDocument();
+  });
+
+  it("shows reconnect guidance when the GitHub session is connected but missing a Copilot token", async () => {
+    vi.stubGlobal("fetch", createConnectedWithoutTokenModelErrorFetch());
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByText(/session needs to be refreshed/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/missing the token needed to load copilot models/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /reconnect github copilot/i })).toBeInTheDocument();
+    expect(screen.queryByText(/questgen couldn't load copilot models/i)).not.toBeInTheDocument();
   });
 
   it("BYOK fields visible when BYOK provider selected", async () => {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getSessionOwnerIds, sessionOwnsUserId } from "@/lib/auth-utils";
 import { getStorage } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export async function GET(
   { params }: RouteContext
 ) {
   const session = await auth();
-  if (!session?.user?.email) {
+  if (!session?.user || getSessionOwnerIds(session).length === 0) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -23,7 +24,7 @@ export async function GET(
     return NextResponse.json({ error: "Game not found" }, { status: 404 });
   }
 
-  if (metadata.userId !== session.user.email) {
+  if (!sessionOwnsUserId(session, metadata.userId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -42,12 +43,11 @@ export async function DELETE(
   { params }: RouteContext
 ) {
   const session = await auth();
-  if (!session?.user?.email) {
+  if (!session?.user || getSessionOwnerIds(session).length === 0) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
-  const userId = session.user.email;
   const storage = getStorage();
   const metadata = await storage.getMetadata(id);
 
@@ -55,10 +55,10 @@ export async function DELETE(
     return NextResponse.json({ error: "Game not found" }, { status: 404 });
   }
 
-  if (metadata.userId !== userId) {
+  if (!sessionOwnsUserId(session, metadata.userId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  await storage.deleteGame(id, userId);
+  await storage.deleteGame(id, metadata.userId);
   return NextResponse.json({ deleted: true });
 }

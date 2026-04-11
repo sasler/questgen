@@ -19,62 +19,77 @@ const selectClass =
   "w-full bg-[#0a0a0a] border border-[#1a3a1a] text-[#00ff41] font-mono text-sm px-3 py-2 " +
   "focus:outline-none focus:border-[#00ff41] focus:ring-1 focus:ring-[#00ff41]";
 
-// ---------------------------------------------------------------------------
-// Connection status types
-// ---------------------------------------------------------------------------
-
 interface ConnectionStatus {
+  authConfigured: boolean;
   github: { connected: boolean; username?: string; avatar?: string | null };
   copilot: { available: boolean; error?: string | null };
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
+function classifyCopilotError(error: string | null): "runtime" | "account" | "unknown" {
+  const normalized = error?.toLowerCase() ?? "";
+
+  if (
+    normalized.includes("could not find @github/copilot package") ||
+    normalized.includes("could not resolve the @github/copilot cli path") ||
+    normalized.includes("copilot_cli_path") ||
+    normalized.includes("path to copilot cli is required") ||
+    normalized.includes("copilot cli not found")
+  ) {
+    return "runtime";
+  }
+
+  if (
+    normalized.includes("copilot not enabled") ||
+    normalized.includes("not available for this account")
+  ) {
+    return "account";
+  }
+
+  return "unknown";
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [models, setModels] = useState<AIModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [mounted, setMounted] = useState(false);
-
-  // Connection status state
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
-  const [connectionLoading, setConnectionLoading] = useState(false);
+  const [connectionLoading, setConnectionLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState(false);
 
-  // Load persisted settings on mount
   useEffect(() => {
     const stored = loadSettings();
     setSettings(stored);
     setMounted(true);
   }, []);
 
-  // Fetch connection status
   const fetchConnectionStatus = useCallback(async () => {
     setConnectionLoading(true);
+    setConnectionError(false);
     try {
       const res = await fetch("/api/copilot/status");
-      if (res.ok) {
-        const data: ConnectionStatus = await res.json();
-        setConnectionStatus(data);
+      if (!res.ok) {
+        throw new Error("Status unavailable");
       }
+      const data: ConnectionStatus = await res.json();
+      setConnectionStatus(data);
     } catch {
-      // silently ignore — status is informational
+      setConnectionError(true);
     } finally {
       setConnectionLoading(false);
     }
   }, []);
 
-  // Fetch connection status on mount
   useEffect(() => {
     if (!mounted) return;
     fetchConnectionStatus();
   }, [mounted, fetchConnectionStatus]);
 
-  // Fetch models when provider config changes
   const fetchModels = useCallback(async (s: UserSettings) => {
     setModelsLoading(true);
+    setModelsError(null);
     try {
       const params = new URLSearchParams({ provider: s.provider });
       if (s.provider === "byok" && s.byokType) {
@@ -85,8 +100,8 @@ export default function SettingsPage() {
       const data = await res.json();
       const fetched: AIModelInfo[] = data.models ?? [];
       setModels(fetched);
+      setModelsError(typeof data.error === "string" ? data.error : null);
 
-      // Auto-select recommended models if current selections are empty or missing
       const genRec = fetched.find((m: AIModelInfo) => m.recommended === "generation");
       const gameRec = fetched.find((m: AIModelInfo) => m.recommended === "gameplay");
 
@@ -101,6 +116,7 @@ export default function SettingsPage() {
       });
     } catch {
       setModels([]);
+      setModelsError("QuestGen couldn't load models right now.");
     } finally {
       setModelsLoading(false);
     }
@@ -109,11 +125,9 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!mounted) return;
     fetchModels(settings);
-    // Only re-fetch when provider-related fields change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, settings.provider, settings.byokType, fetchModels]);
 
-  // Convenience updater
   const update = <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     setSaved(false);
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -125,17 +139,261 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  // Model option label with recommended badge
   const modelLabel = (m: AIModelInfo) => {
     if (m.recommended === "generation") return `${m.name} ★ Recommended for Generation`;
     if (m.recommended === "gameplay") return `${m.name} ★ Recommended for Gameplay`;
     return m.name;
   };
 
+  const copilotSignInHref = "/api/auth/signin?callbackUrl=%2Fsettings";
+  const copilotSignOutHref = "/api/auth/signout?callbackUrl=%2Fsettings";
+  const copilotIssueType =
+    settings.provider === "copilot" ? classifyCopilotError(modelsError) : "unknown";
+  const showCopilotRuntimeIssue =
+    settings.provider === "copilot" &&
+    Boolean(modelsError) &&
+    connectionStatus?.copilot.available === true &&
+    Boolean(connectionStatus?.github.connected);
+
+  const renderConnectionPanel = () => {
+    if (connectionLoading && !connectionStatus) {
+      return <p className="text-[#4a6741] animate-pulse text-xs">Checking connection...</p>;
+    }
+
+    if (connectionError && !connectionStatus) {
+      return (
+        <>
+          <p className="text-sm text-[#ffb000] font-bold">
+            We couldn&apos;t check GitHub Copilot status right now.
+          </p>
+          <p className="text-xs text-[#4a6741] leading-relaxed">
+            Try refreshing the status. This does not necessarily mean the deployment is
+            misconfigured.
+          </p>
+          <button
+            onClick={fetchConnectionStatus}
+            disabled={connectionLoading}
+            className="w-fit px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors disabled:opacity-50"
+          >
+            {connectionLoading ? "Refreshing..." : "Refresh status"}
+          </button>
+        </>
+      );
+    }
+
+    if (!connectionStatus) {
+      return null;
+    }
+
+    const staleWarning =
+      connectionError && connectionStatus ? (
+        <p className="text-xs text-[#ffb000] leading-relaxed">
+          We couldn&apos;t refresh the latest GitHub Copilot status. The details below may be stale.
+        </p>
+      ) : null;
+
+    if (!connectionStatus.authConfigured) {
+      return (
+        <>
+          {staleWarning}
+          <p className="text-sm text-[#ffb000] font-bold">
+            GitHub Copilot sign-in isn&apos;t enabled on this deployment.
+          </p>
+          <p className="text-xs text-[#4a6741] leading-relaxed">
+            Regular players should only ever see a connect button. This means whoever deployed
+            this copy still needs to finish the one-time owner setup.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/setup"
+              className="px-3 py-1 text-xs border border-[#ffb000] text-[#ffb000] hover:bg-[#ffb000] hover:text-[#0a0a0a] transition-colors"
+            >
+              Owner Setup
+            </Link>
+            <Link
+              href="/guide"
+              className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors"
+            >
+              Copilot Signup Guide
+            </Link>
+          </div>
+        </>
+      );
+    }
+
+    if (!connectionStatus.github.connected) {
+      return (
+        <>
+          {staleWarning}
+          <p className="text-sm text-[#00ff41] font-bold">Recommended: GitHub Copilot</p>
+          <p className="text-xs text-[#4a6741] leading-relaxed">
+            Sign in with your GitHub account and QuestGen will use your own Copilot subscription.
+            No API key needed.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={copilotSignInHref}
+              className="px-3 py-1 text-xs border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-[#0a0a0a] transition-colors"
+            >
+              Connect GitHub Copilot
+            </Link>
+            <Link
+              href="/guide"
+              className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors"
+            >
+              Need a free Copilot account?
+            </Link>
+          </div>
+        </>
+      );
+    }
+
+    if (showCopilotRuntimeIssue) {
+      return (
+        <>
+          {staleWarning}
+          <div className="flex items-center gap-2 text-sm">
+            <span
+              data-testid="copilot-status-dot"
+              className="inline-block w-2 h-2 rounded-full bg-[#ff4444]"
+            />
+            <p>
+              Connected as{" "}
+              <span className="text-[#ffb000] font-bold">{connectionStatus.github.username}</span>,
+              but QuestGen couldn&apos;t load Copilot models.
+            </p>
+          </div>
+          {modelsError && <p className="text-[#ff4444] text-xs">{modelsError}</p>}
+          <p className="text-xs text-[#4a6741] leading-relaxed">
+            {copilotIssueType === "runtime"
+              ? "Your GitHub sign-in succeeded, but this deployment couldn't start the Copilot runtime. Try reloading models or reconnecting GitHub."
+              : copilotIssueType === "account"
+                ? "Your GitHub sign-in succeeded, but this account still needs Copilot access. You can reconnect, switch to BYOK, or follow the signup guide."
+                : "Your GitHub sign-in succeeded, but QuestGen couldn't verify Copilot model access right now. Try again before switching providers."}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={copilotSignInHref}
+              className="px-3 py-1 text-xs border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-[#0a0a0a] transition-colors"
+            >
+              Reconnect GitHub Copilot
+            </Link>
+            <Link
+              href={copilotSignOutHref}
+              className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors"
+            >
+              Disconnect GitHub
+            </Link>
+            <button
+              onClick={() => void fetchModels(settings)}
+              disabled={modelsLoading}
+              className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors disabled:opacity-50"
+            >
+              {modelsLoading ? "Retrying..." : "Retry model loading"}
+            </button>
+            <button
+              onClick={fetchConnectionStatus}
+              disabled={connectionLoading}
+              className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors disabled:opacity-50"
+            >
+              {connectionLoading ? "Refreshing..." : "Refresh status"}
+            </button>
+            {copilotIssueType === "account" && (
+              <Link
+                href="/guide"
+                className="px-3 py-1 text-xs border border-[#ffb000] text-[#ffb000] hover:bg-[#ffb000] hover:text-[#0a0a0a] transition-colors"
+              >
+                How to get Copilot
+              </Link>
+            )}
+          </div>
+        </>
+      );
+    }
+
+    if (connectionStatus.copilot.available) {
+      return (
+        <>
+          {staleWarning}
+          <div className="flex items-center gap-2 text-sm">
+            <span
+              data-testid="github-status-dot"
+              className="inline-block w-2 h-2 rounded-full bg-[#00ff41]"
+            />
+            <p>
+              Connected as{" "}
+              <span className="text-[#ffb000] font-bold">{connectionStatus.github.username}</span>
+            </p>
+          </div>
+          <p className="text-xs text-[#4a6741] leading-relaxed">
+            GitHub sign-in is ready. QuestGen will use the player&apos;s own subscription, not the
+            site owner&apos;s.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={copilotSignOutHref}
+              className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors"
+            >
+              Disconnect GitHub
+            </Link>
+            <button
+              onClick={fetchConnectionStatus}
+              disabled={connectionLoading}
+              className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors disabled:opacity-50"
+            >
+              {connectionLoading ? "Refreshing..." : "Refresh status"}
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    return (
+      <>
+        {staleWarning}
+        <div className="flex items-center gap-2 text-sm">
+          <span
+            data-testid="copilot-status-dot"
+            className="inline-block w-2 h-2 rounded-full bg-[#ffb000]"
+          />
+          <p>
+            Connected as{" "}
+            <span className="text-[#ffb000] font-bold">{connectionStatus.github.username}</span>,
+            but this GitHub session needs to be refreshed.
+          </p>
+        </div>
+        <p className="text-xs text-[#4a6741] leading-relaxed">
+          QuestGen can see your GitHub session, but it is missing the token needed to load
+          Copilot models. Reconnect GitHub, then refresh status.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href={copilotSignInHref}
+            className="px-3 py-1 text-xs border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-[#0a0a0a] transition-colors"
+          >
+            Reconnect GitHub Copilot
+          </Link>
+          <Link
+            href={copilotSignOutHref}
+            className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors"
+          >
+            Disconnect GitHub
+          </Link>
+          <button
+            onClick={fetchConnectionStatus}
+            disabled={connectionLoading}
+            className="px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors disabled:opacity-50"
+          >
+            {connectionLoading ? "Refreshing..." : "Refresh status"}
+          </button>
+        </div>
+      </>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#00ff41] font-mono p-4 md:p-8">
       <div className="max-w-2xl mx-auto space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold glow-text">⚙ SETTINGS</h1>
           <Link
@@ -146,87 +404,12 @@ export default function SettingsPage() {
           </Link>
         </div>
 
-        {/* ── Connection Status ──────────────────────────────────────── */}
-        <PanelFrame title="Connection Status">
-          <div className="space-y-2">
-            {connectionLoading && !connectionStatus ? (
-              <p className="text-[#4a6741] animate-pulse text-xs">Checking connection…</p>
-            ) : (
-              <>
-                {/* GitHub status */}
-                <div className="flex items-center gap-2 text-sm">
-                  <span
-                    data-testid="github-status-dot"
-                    className={`inline-block w-2 h-2 rounded-full ${
-                      connectionStatus?.github.connected ? "bg-[#00ff41]" : "bg-[#ff4444]"
-                    }`}
-                  />
-                  <span className="text-[#ffb000]">GitHub:</span>
-                  {connectionStatus?.github.connected ? (
-                    <span>
-                      Connected as{" "}
-                      <span className="text-[#00ff41] font-bold">
-                        {connectionStatus.github.username}
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="text-[#ff4444]">Not connected</span>
-                  )}
-                </div>
-
-                {/* Copilot status */}
-                <div className="flex items-center gap-2 text-sm">
-                  <span
-                    data-testid="copilot-status-dot"
-                    className={`inline-block w-2 h-2 rounded-full ${
-                      connectionStatus?.copilot.available ? "bg-[#00ff41]" : "bg-[#ff4444]"
-                    }`}
-                  />
-                  <span className="text-[#ffb000]">Copilot:</span>
-                  {connectionStatus?.copilot.available ? (
-                    <span>Available ✓</span>
-                  ) : (
-                    <span className="text-[#ff4444]">Not available</span>
-                  )}
-                </div>
-
-                {/* Copilot error message */}
-                {connectionStatus?.copilot.error && (
-                  <p className="text-[#ff4444] text-xs ml-4">
-                    {connectionStatus.copilot.error}
-                  </p>
-                )}
-
-                {/* Guide link when Copilot is unavailable */}
-                {connectionStatus && !connectionStatus.copilot.available && (
-                  <p className="text-xs ml-4">
-                    <Link href="/guide" className="text-[#ffb000] underline hover:text-[#00ff41]">
-                      How to get Copilot →
-                    </Link>
-                  </p>
-                )}
-              </>
-            )}
-
-            {/* Test Connection button */}
-            <div className="pt-1">
-              <button
-                onClick={fetchConnectionStatus}
-                disabled={connectionLoading}
-                className={
-                  "px-3 py-1 text-xs border cursor-pointer " +
-                  "bg-[#0a0a0a] border-[#1a3a1a] text-[#4a6741] " +
-                  "hover:border-[#00ff41] hover:text-[#00ff41] transition-colors " +
-                  "disabled:opacity-50 disabled:cursor-not-allowed"
-                }
-              >
-                {connectionLoading ? "Testing…" : "[ TEST CONNECTION ]"}
-              </button>
-            </div>
+        <PanelFrame title="GitHub Copilot">
+          <div className="space-y-3">
+            {renderConnectionPanel()}
           </div>
         </PanelFrame>
 
-        {/* ── Provider Selection ─────────────────────────────────────── */}
         <PanelFrame title="AI Provider">
           <fieldset className="space-y-3">
             <legend className="text-[#ffb000] text-sm mb-2">
@@ -246,8 +429,9 @@ export default function SettingsPage() {
             </label>
 
             {settings.provider === "copilot" && (
-              <p className="text-[#4a6741] text-xs ml-6">
-                Uses your GitHub Copilot subscription. Models loaded from your account.
+              <p className="text-[#4a6741] text-xs ml-6 leading-relaxed">
+                Recommended. Each player uses their own GitHub Copilot subscription after
+                clicking Connect GitHub Copilot above.
               </p>
             )}
 
@@ -264,7 +448,6 @@ export default function SettingsPage() {
             </label>
           </fieldset>
 
-          {/* BYOK sub-form */}
           {settings.provider === "byok" && (
             <div className="mt-4 ml-6 space-y-3 border-l border-[#1a3a1a] pl-4">
               <fieldset className="space-y-2">
@@ -279,7 +462,9 @@ export default function SettingsPage() {
                       onChange={() => update("byokType", t)}
                       className="accent-[#00ff41]"
                     />
-                    <span className="capitalize">{t === "openai" ? "OpenAI" : t === "anthropic" ? "Anthropic" : "Azure"}</span>
+                    <span className="capitalize">
+                      {t === "openai" ? "OpenAI" : t === "anthropic" ? "Anthropic" : "Azure"}
+                    </span>
                   </label>
                 ))}
               </fieldset>
@@ -311,17 +496,34 @@ export default function SettingsPage() {
                   className={inputClass}
                 />
                 <p className="text-[#4a6741] text-xs mt-1">
-                  Stored in your browser only — never sent to our servers.
+                  Stored in your browser only. The key is only forwarded when you start or
+                  continue a game.
                 </p>
               </div>
             </div>
           )}
         </PanelFrame>
 
-        {/* ── Model Selection ───────────────────────────────────────── */}
         <PanelFrame title="Model Selection">
           {modelsLoading ? (
             <p className="text-[#4a6741] animate-pulse">Loading models…</p>
+          ) : models.length === 0 ? (
+            <div className="space-y-3">
+              <p className="text-sm text-[#ffb000] font-bold">No models available yet.</p>
+              <p className="text-xs text-[#4a6741] leading-relaxed">
+                {modelsError ??
+                  (settings.provider === "copilot"
+                    ? "Connect GitHub Copilot above, then retry loading models."
+                    : "Finish your BYOK configuration, then retry loading models.")}
+              </p>
+              <button
+                onClick={() => void fetchModels(settings)}
+                disabled={modelsLoading}
+                className="w-fit px-3 py-1 text-xs border border-[#1a3a1a] text-[#4a6741] hover:border-[#00ff41] hover:text-[#00ff41] transition-colors disabled:opacity-50"
+              >
+                Retry model load
+              </button>
+            </div>
           ) : (
             <div className="space-y-4">
               <div>
@@ -363,7 +565,6 @@ export default function SettingsPage() {
           )}
         </PanelFrame>
 
-        {/* ── Response Length ────────────────────────────────────────── */}
         <PanelFrame title="Response Length">
           <fieldset className="space-y-3">
             <legend className="text-[#ffb000] text-sm mb-2">
@@ -405,7 +606,6 @@ export default function SettingsPage() {
           </fieldset>
         </PanelFrame>
 
-        {/* ── Actions ───────────────────────────────────────────────── */}
         <div className="flex items-center gap-4">
           <button
             onClick={handleSave}

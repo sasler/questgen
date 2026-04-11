@@ -30,15 +30,21 @@ export default function SetupPage() {
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [generatedSecret, setGeneratedSecret] = useState<string | null>(null);
+  const [statusUnavailable, setStatusUnavailable] = useState(false);
 
   const checkStatus = useCallback(async () => {
     setLoading(true);
+    setStatusUnavailable(false);
     try {
       const res = await fetch("/api/setup/check");
+      if (!res.ok) {
+        throw new Error("Status unavailable");
+      }
       const data = await res.json();
       setStatus(data);
     } catch {
-      // keep status null on failure
+      setStatus(null);
+      setStatusUnavailable(true);
     } finally {
       setLoading(false);
     }
@@ -69,7 +75,11 @@ export default function SetupPage() {
             ╚══════════════════════════════╝
           </h1>
           <p className="text-[#00ff41] mt-2 text-sm opacity-70">
-            Configure environment variables to activate QuestGen
+            One-time deployment setup
+          </p>
+          <p className="text-[#4a6741] mt-3 text-xs leading-relaxed">
+            This page is only for the person deploying QuestGen. Regular players should
+            only see a GitHub connect button, not any of this.
           </p>
         </div>
 
@@ -77,6 +87,14 @@ export default function SetupPage() {
           <div className="text-center text-[#ffb000] animate-pulse">
             &gt; Checking system configuration...
           </div>
+        )}
+        {statusUnavailable && (
+          <PanelFrame title="LOCAL STATUS CHECKS">
+            <p className="text-xs text-[#4a6741] leading-relaxed">
+              Live setup checks are only available on localhost. On Vercel, set the
+              deployment owner variables in the dashboard and redeploy.
+            </p>
+          </PanelFrame>
         )}
 
         {status?.allConfigured && (
@@ -96,27 +114,25 @@ export default function SetupPage() {
           </PanelFrame>
         )}
 
-        {/* Step 1: AUTH_SECRET */}
-        <PanelFrame title="STEP 1 — AUTH_SECRET">
+        <PanelFrame title="STEP 1 — Secure Sessions">
           <div className="space-y-2">
             <p>
               <StatusIcon ok={!!status?.secret} />{" "}
-              <span className="text-[#ffb000]">AUTH_SECRET</span>{" "}
+              <span className="text-[#ffb000]">Session secret</span>{" "}
               {status?.secret ? (
-                <span className="text-[#00ff41]">configured</span>
+                <span className="text-[#00ff41]">ready</span>
               ) : (
                 <span className="text-[#ff4444]">missing</span>
               )}
             </p>
-            <p className="text-xs opacity-70">Generate a random secret:</p>
-            <code className="block bg-[#0a0a0a] border border-[#1a3a1a] px-2 py-1 text-xs">
-              openssl rand -base64 32
-            </code>
+            <p className="text-xs opacity-70">
+              QuestGen needs one private random value to keep login sessions safe.
+            </p>
             <button
               onClick={() => setGeneratedSecret(generateSecret())}
               className="mt-1 px-3 py-1 text-xs border border-[#ffb000] text-[#ffb000] hover:bg-[#ffb000] hover:text-[#0a0a0a] transition-colors"
             >
-              Generate
+              Generate secret
             </button>
             {generatedSecret && (
               <code
@@ -126,24 +142,32 @@ export default function SetupPage() {
                 {generatedSecret}
               </code>
             )}
-            <p className="text-xs opacity-70">
-              Add to <code>.env.local</code> or Vercel environment variables.
-            </p>
+            <details className="text-xs opacity-70">
+              <summary className="cursor-pointer text-[#ffb000]">Technical details</summary>
+              <div className="mt-2 space-y-2">
+                <p>Save it as <code>AUTH_SECRET</code> in <code>.env.local</code> or Vercel.</p>
+                <code className="block bg-[#0a0a0a] border border-[#1a3a1a] px-2 py-1">
+                  openssl rand -base64 32
+                </code>
+              </div>
+            </details>
           </div>
         </PanelFrame>
 
-        {/* Step 2: GitHub OAuth */}
-        <PanelFrame title="STEP 2 — GitHub OAuth App">
+        <PanelFrame title="STEP 2 — Enable GitHub Sign-In">
           <div className="space-y-2">
             <p>
               <StatusIcon ok={!!status?.auth} />{" "}
-              <span className="text-[#ffb000]">GITHUB_ID</span> &amp;{" "}
-              <span className="text-[#ffb000]">GITHUB_SECRET</span>{" "}
+              <span className="text-[#ffb000]">GitHub sign-in</span>{" "}
               {status?.auth ? (
-                <span className="text-[#00ff41]">configured</span>
+                <span className="text-[#00ff41]">ready</span>
               ) : (
                 <span className="text-[#ff4444]">missing</span>
               )}
+            </p>
+            <p className="text-xs opacity-70 leading-relaxed">
+              Players use their own GitHub account and their own Copilot subscription.
+              GitHub still requires the app owner to register the sign-in app once.
             </p>
             <a
               href={oauthUrl}
@@ -151,36 +175,35 @@ export default function SetupPage() {
               rel="noopener noreferrer"
               className="inline-block px-3 py-1 text-xs border border-[#ffb000] text-[#ffb000] hover:bg-[#ffb000] hover:text-[#0a0a0a] transition-colors"
             >
-              Create OAuth App
+              Create GitHub OAuth App
             </a>
-            <p className="text-xs opacity-70">After creating the app:</p>
-            <ul className="text-xs opacity-70 list-disc list-inside space-y-1">
-              <li>
-                Copy <strong>Client ID</strong> →{" "}
-                <code>GITHUB_ID</code>
-              </li>
-              <li>
-                Copy <strong>Client Secret</strong> →{" "}
-                <code>GITHUB_SECRET</code>
-              </li>
-            </ul>
-            <p className="text-xs opacity-70">
-              Add to <code>.env.local</code> or Vercel environment variables.
-            </p>
+            <details className="text-xs opacity-70">
+              <summary className="cursor-pointer text-[#ffb000]">Technical details</summary>
+              <div className="mt-2 space-y-2">
+                <p>After creating the app, copy:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li><strong>Client ID</strong> → <code>GITHUB_ID</code></li>
+                  <li><strong>Client Secret</strong> → <code>GITHUB_SECRET</code></li>
+                </ul>
+                <p>Add both to <code>.env.local</code> or Vercel environment variables.</p>
+              </div>
+            </details>
           </div>
         </PanelFrame>
 
-        {/* Step 3: Upstash Redis */}
-        <PanelFrame title="STEP 3 — Upstash Redis">
+        <PanelFrame title="STEP 3 — Connect Save Storage">
           <div className="space-y-2">
             <p>
               <StatusIcon ok={!!status?.redisConnected} />{" "}
-              <span className="text-[#ffb000]">Upstash Redis</span>{" "}
+              <span className="text-[#ffb000]">Saved games storage</span>{" "}
               {status?.redisConnected ? (
                 <span className="text-[#00ff41]">connected</span>
               ) : (
                 <span className="text-[#ff4444]">not configured</span>
               )}
+            </p>
+            <p className="text-xs opacity-70">
+              QuestGen stores worlds and save data in Upstash Redis.
             </p>
             <a
               href="https://console.upstash.com"
@@ -190,25 +213,21 @@ export default function SetupPage() {
             >
               Create Redis Database
             </a>
-            <ul className="text-xs opacity-70 list-disc list-inside space-y-1">
-              <li>
-                Copy <strong>REST URL</strong> →{" "}
-                <code>UPSTASH_REDIS_REST_URL</code>
-              </li>
-              <li>
-                Copy <strong>REST Token</strong> →{" "}
-                <code>UPSTASH_REDIS_REST_TOKEN</code>
-              </li>
-            </ul>
+            <details className="text-xs opacity-70">
+              <summary className="cursor-pointer text-[#ffb000]">Technical details</summary>
+              <ul className="mt-2 list-disc list-inside space-y-1">
+                <li><strong>REST URL</strong> → <code>UPSTASH_REDIS_REST_URL</code></li>
+                <li><strong>REST Token</strong> → <code>UPSTASH_REDIS_REST_TOKEN</code></li>
+              </ul>
+            </details>
           </div>
         </PanelFrame>
 
-        {/* Step 4: Restart */}
-        <PanelFrame title="STEP 4 — Restart / Redeploy">
+        <PanelFrame title="STEP 4 — Recheck">
           <div className="space-y-2">
             <p className="text-xs opacity-70">
-              After setting all environment variables, restart your dev server or
-              redeploy on Vercel.
+              After saving the owner settings, restart your local dev server or redeploy
+              on Vercel, then recheck below.
             </p>
             <button
               onClick={checkStatus}

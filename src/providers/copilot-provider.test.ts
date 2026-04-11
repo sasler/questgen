@@ -110,6 +110,43 @@ describe("CopilotProvider", () => {
       );
     });
 
+    it("passes an explicit Copilot CLI path to the SDK client", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({
+        data: { content: "response" },
+      });
+
+      await provider.generateCompletion("test", options, copilotConfig);
+
+      expect(constructedClients[0]?.options).toEqual(
+        expect.objectContaining({
+          autoStart: false,
+          cliPath: expect.stringMatching(/@github[\\/]copilot[\\/]index\.js$/),
+          githubToken: "gh-token-123",
+          useLoggedInUser: false,
+        }),
+      );
+    });
+
+    it("passes an explicit cliPath for Copilot mode", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({
+        data: { content: "response" },
+      });
+
+      await provider.generateCompletion("test", options, copilotConfig);
+
+      expect(constructedClients[0]?.options).toEqual(
+        expect.objectContaining({
+          cliPath: expect.stringContaining("@github"),
+          githubToken: "gh-token-123",
+          useLoggedInUser: false,
+        }),
+      );
+    });
+
     it("passes BYOK provider config to createSession", async () => {
       const session = makeSession();
       mockCreateSession.mockResolvedValue(session);

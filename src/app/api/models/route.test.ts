@@ -46,7 +46,7 @@ describe("GET /api/models", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    mockAuth.mockResolvedValue(null);
+    mockAuth.mockResolvedValue(null as never);
 
     const response = await GET(makeRequest({ provider: "copilot" }));
 

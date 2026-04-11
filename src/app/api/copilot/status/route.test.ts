@@ -3,32 +3,38 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock auth and providers modules before importing the route
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
+  isAuthConfigured: vi.fn(),
 }));
 
 vi.mock("@/providers", () => ({
   getAIProvider: vi.fn(),
 }));
 
-import { auth } from "@/lib/auth";
+import { auth, isAuthConfigured } from "@/lib/auth";
 import { getAIProvider } from "@/providers";
 import { GET } from "./route";
 
 const mockAuth = vi.mocked(auth);
+const mockIsAuthConfigured = vi.mocked(isAuthConfigured);
 const mockGetAIProvider = vi.mocked(getAIProvider);
 
 describe("GET /api/copilot/status", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsAuthConfigured.mockReturnValue(true);
   });
 
-  it("returns github.connected=false when no session", async () => {
-    mockAuth.mockResolvedValue(null);
+  it("returns deployment auth status when GitHub sign-in is not configured", async () => {
+    mockIsAuthConfigured.mockReturnValue(false);
+    mockAuth.mockResolvedValue(null as never);
 
     const response = await GET();
     const body = await response.json();
 
+    expect(body.authConfigured).toBe(false);
     expect(body.github.connected).toBe(false);
     expect(body.copilot.available).toBe(false);
+    expect(mockGetAIProvider).not.toHaveBeenCalled();
   });
 
   it("returns github.connected=true with username when session exists", async () => {
@@ -37,13 +43,6 @@ describe("GET /api/copilot/status", () => {
       accessToken: "gho_abc123",
     } as never);
 
-    const mockProvider = {
-      listModels: vi.fn().mockResolvedValue([
-        { id: "gpt-4o", name: "GPT-4o", provider: "copilot" },
-      ]),
-    };
-    mockGetAIProvider.mockReturnValue(mockProvider as never);
-
     const response = await GET();
     const body = await response.json();
 
@@ -51,6 +50,7 @@ describe("GET /api/copilot/status", () => {
     expect(body.github.username).toBe("testuser");
     expect(body.github.avatar).toBe("https://avatar.url");
     expect(body.copilot.available).toBe(true);
+    expect(mockGetAIProvider).not.toHaveBeenCalled();
   });
 
   it("returns copilot.available=false when no access token", async () => {
@@ -64,24 +64,21 @@ describe("GET /api/copilot/status", () => {
 
     expect(body.github.connected).toBe(true);
     expect(body.copilot.available).toBe(false);
+    expect(mockGetAIProvider).not.toHaveBeenCalled();
   });
 
-  it("handles Copilot SDK errors gracefully", async () => {
+  it("does not boot the Copilot SDK during status checks", async () => {
     mockAuth.mockResolvedValue({
       user: { name: "testuser" },
       accessToken: "gho_abc123",
     } as never);
 
-    const mockProvider = {
-      listModels: vi.fn().mockRejectedValue(new Error("Copilot not enabled")),
-    };
-    mockGetAIProvider.mockReturnValue(mockProvider as never);
-
     const response = await GET();
     const body = await response.json();
 
     expect(body.github.connected).toBe(true);
-    expect(body.copilot.available).toBe(false);
-    expect(body.copilot.error).toBe("Copilot not enabled");
+    expect(body.copilot.available).toBe(true);
+    expect(body.copilot.error).toBeUndefined();
+    expect(mockGetAIProvider).not.toHaveBeenCalled();
   });
 });

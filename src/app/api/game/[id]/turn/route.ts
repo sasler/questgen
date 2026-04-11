@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getSessionOwnerIds, sessionOwnsUserId } from "@/lib/auth-utils";
 import { processTurn } from "@/lib/turn-processor";
 import { getStorage } from "@/lib/storage";
 import type { AIProviderConfig } from "@/providers/types";
@@ -12,7 +13,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user || getSessionOwnerIds(session).length === 0) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -40,7 +41,7 @@ export async function POST(
   if (!metadata) {
     return NextResponse.json({ error: "Game not found" }, { status: 404 });
   }
-  if (metadata.userId !== session.user.id) {
+  if (!sessionOwnsUserId(session, metadata.userId)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -21,12 +21,15 @@ vi.mock("next/link", () => ({
 
 // Mock auth from @/lib/auth
 const mockAuth = vi.fn();
+const mockIsAuthConfigured = vi.fn();
 vi.mock("@/lib/auth", () => ({
   auth: () => mockAuth(),
+  isAuthConfigured: () => mockIsAuthConfigured(),
 }));
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  mockIsAuthConfigured.mockReturnValue(true);
 });
 
 // ---------- Landing Page ----------
@@ -45,8 +48,19 @@ describe("Landing Page", () => {
     const { default: Page } = await import("./page");
     const jsx = await Page();
     render(jsx);
-    const signInLink = screen.getByRole("link", { name: /sign in/i });
+    const signInLink = screen.getByRole("link", { name: /connect github copilot/i });
     expect(signInLink).toHaveAttribute("href", "/api/auth/signin");
+  });
+
+  it("shows owner setup link instead of sign-in when GitHub auth is not configured", async () => {
+    mockAuth.mockResolvedValue(null);
+    mockIsAuthConfigured.mockReturnValue(false);
+    const { default: Page } = await import("./page");
+    const jsx = await Page();
+    render(jsx);
+
+    expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /owner setup/i })).toHaveAttribute("href", "/setup");
   });
 
   it("shows dashboard link when authenticated", async () => {
@@ -85,5 +99,20 @@ describe("Error Page", () => {
     const user = userEvent.setup();
     await user.click(retryBtn);
     expect(reset).toHaveBeenCalled();
+  });
+});
+
+describe("Auth Error Page", () => {
+  it("shows GitHub configuration guidance", async () => {
+    const { default: AuthErrorPage } = await import("./auth/error/page");
+    const jsx = await AuthErrorPage({
+      searchParams: { error: "Configuration" },
+    });
+    render(jsx);
+
+    expect(screen.getByText(/configured incorrectly/i)).toBeInTheDocument();
+    expect(screen.getByText(/client id/i)).toBeInTheDocument();
+    expect(screen.getByText(/not the numeric app id/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /owner setup/i })).toHaveAttribute("href", "/setup");
   });
 });

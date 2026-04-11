@@ -1,9 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { isAuthConfigured } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+export async function GET(request: NextRequest) {
+  if (!isLocalHost(request.nextUrl.hostname)) {
+    return NextResponse.json(
+      { error: "Live setup checks are only available on localhost." },
+      { status: 403 },
+    );
+  }
+
   const status = {
     auth: isAuthConfigured(),
     secret: !!(process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET),

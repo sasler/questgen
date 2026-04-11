@@ -13,9 +13,13 @@ On this Next.js version, `middleware.ts` is deprecated and `proxy.ts` is the cor
 1. **Write a failing test** — only tests that make sense for the functionality
 2. **Implement the task** — make the test pass
 3. **Run ALL tests** — `npx vitest run`. If anything fails, fix it before continuing.
-4. **Code review** — use GPT 5.4 subagent for code review
+4. **Code review** — use a subagent of different model for code review
 5. **Address issues** — fix any code review findings, go back to step 3
 6. **Move to next task** — only when all tests pass AND review issues are resolved
+
+## Code review models
+
+If the GPT family of models was used to writhe the code, use Sonnet 4.6. For everything else, use GPT 5.4 for code reviews.
 
 ## Commands
 

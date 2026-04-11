@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getSessionOwnerIds, sessionOwnsUserId } from "@/lib/auth-utils";
-import { processTurn } from "@/lib/turn-processor";
+import { generateOpeningNarration } from "@/lib/opening-narration";
 import { formatStorageError, getStorage } from "@/lib/storage";
 import type { AIProviderConfig } from "@/providers/types";
 
@@ -17,21 +17,11 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { input?: string; turnId?: string; byokApiKey?: string; stream?: boolean };
+  let body: { byokApiKey?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  if (!body.input) {
-    return NextResponse.json({ error: "input is required" }, { status: 400 });
-  }
-  if (!body.turnId) {
-    return NextResponse.json(
-      { error: "turnId is required" },
-      { status: 400 },
-    );
   }
 
   const { id: gameId } = await params;
@@ -60,18 +50,6 @@ export async function POST(
             byokApiKey: body.byokApiKey,
           };
 
-    if (!body.stream) {
-      const result = await processTurn(
-        gameId,
-        body.input,
-        body.turnId,
-        aiConfig,
-        settings,
-        storage,
-      );
-      return NextResponse.json(result);
-    }
-
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
@@ -80,20 +58,18 @@ export async function POST(
         };
 
         try {
-          const result = await processTurn(
+          const entry = await generateOpeningNarration(
             gameId,
-            body.input!,
-            body.turnId!,
             aiConfig,
             settings,
             storage,
             undefined,
             (chunk) => send({ type: "chunk", chunk }),
           );
-          send({ type: "final", result });
+          send({ type: "final", entry });
         } catch (error) {
           const message =
-            error instanceof Error ? error.message : "Turn processing failed";
+            error instanceof Error ? error.message : "Opening narration failed";
           send({ type: "error", error: message });
         } finally {
           controller.close();
@@ -109,14 +85,6 @@ export async function POST(
       },
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Turn processing failed";
-    const normalized =
-      message.startsWith("Storage failed:")
-        ? message
-        : formatStorageError(error).includes("Missing Upstash Redis configuration")
-          ? formatStorageError(error)
-          : message;
-    return NextResponse.json({ error: normalized }, { status: 500 });
+    return NextResponse.json({ error: formatStorageError(error) }, { status: 500 });
   }
 }

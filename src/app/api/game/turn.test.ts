@@ -149,8 +149,50 @@ describe("POST /api/game/[id]/turn", () => {
       makeParams(),
     );
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual(mockTurnResult);
+    expect(res.headers.get("Content-Type")).toBe("application/json");
+    await expect(res.json()).resolves.toEqual(mockTurnResult);
+  });
+
+  it("streams narrative chunks before the final turn result", async () => {
+    mockProcessTurn.mockImplementation(
+      async (
+        _gameId: string,
+        _input: string,
+        _turnId: string,
+        _aiConfig: unknown,
+        _settings: unknown,
+        _storage: unknown,
+        _provider: unknown,
+        onNarrativeChunk?: (chunk: string) => void,
+      ) => {
+        onNarrativeChunk?.("You walk ");
+        onNarrativeChunk?.("north ");
+        onNarrativeChunk?.("into a dark cave.");
+        return mockTurnResult;
+      },
+    );
+
+    const res = await POST(
+      makeRequest({ input: "go north", turnId: "t1", stream: true }),
+      makeParams(),
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("application/x-ndjson");
+
+    const body = await res.text();
+    const lines = body.trim().split("\n");
+    expect(lines).toHaveLength(4);
+    expect(JSON.parse(lines[0])).toEqual({ type: "chunk", chunk: "You walk " });
+    expect(JSON.parse(lines[1])).toEqual({ type: "chunk", chunk: "north " });
+    expect(JSON.parse(lines[2])).toEqual({
+      type: "chunk",
+      chunk: "into a dark cave.",
+    });
+    expect(JSON.parse(lines[3])).toEqual({
+      type: "final",
+      result: mockTurnResult,
+    });
   });
 
   it("accepts email-backed ownership when session user.id is missing", async () => {
@@ -181,7 +223,7 @@ describe("POST /api/game/[id]/turn", () => {
 
   it("passes correct aiConfig for copilot mode", async () => {
     await POST(
-      makeRequest({ input: "go north", turnId: "t1" }),
+      makeRequest({ input: "go north", turnId: "t1", stream: true }),
       makeParams(),
     );
 
@@ -192,6 +234,8 @@ describe("POST /api/game/[id]/turn", () => {
       { mode: "copilot", githubToken: "gh-token-abc" },
       mockSettings,
       expect.anything(),
+      undefined,
+      expect.any(Function),
     );
   });
 
@@ -211,6 +255,7 @@ describe("POST /api/game/[id]/turn", () => {
         input: "go north",
         turnId: "t1",
         byokApiKey: "sk-test",
+        stream: true,
       }),
       makeParams(),
     );
@@ -227,6 +272,8 @@ describe("POST /api/game/[id]/turn", () => {
       },
       byokSettings,
       expect.anything(),
+      undefined,
+      expect.any(Function),
     );
   });
 

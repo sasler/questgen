@@ -72,7 +72,7 @@ export function Terminal({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [entries, streamingText, isLoading]);
 
-  const showWelcome = welcomeMessage && entries.length === 0;
+  const showWelcome = welcomeMessage && entries.length === 0 && !streamingText;
   const showTyping = isLoading && !streamingText;
 
   return (

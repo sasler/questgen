@@ -70,6 +70,21 @@ describe("Terminal", () => {
     expect(screen.queryByTestId("typing-indicator")).not.toBeInTheDocument();
   });
 
+  it("hides the welcome message while streaming text is visible", () => {
+    render(
+      <Terminal
+        entries={[]}
+        welcomeMessage="Welcome, adventurer!"
+        streamingText="You wake to the hum of improbable machinery."
+      />
+    );
+
+    expect(screen.queryByText("Welcome, adventurer!")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/You wake to the hum of improbable machinery./),
+    ).toBeInTheDocument();
+  });
+
   it("does not show welcome message when entries exist", () => {
     const entries: TurnEntry[] = [
       makeTurn({ role: "narrator", text: "You wake up." }),

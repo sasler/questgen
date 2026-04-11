@@ -131,15 +131,61 @@ const gameState: GameState = {
   },
 };
 
-function mockFetchSuccess(state: GameState = gameState) {
-  return vi.fn().mockResolvedValueOnce({
-    ok: true,
-    json: async () => state,
+const activeGameState: GameState = {
+  ...gameState,
+  player: { ...player, turnCount: 1 },
+  history: [
+    {
+      turnId: "intro-1",
+      role: "narrator",
+      text: "You are already inconveniently underway.",
+      timestamp: Date.now(),
+    },
+  ],
+};
+
+function makeJsonResponse(data: unknown, init?: ResponseInit) {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+    ...init,
   });
 }
 
+function makeNdjsonResponse(
+  messages: unknown[],
+  options?: { delayMs?: number },
+) {
+  const encoder = new TextEncoder();
+  const delayMs = options?.delayMs ?? 0;
+
+  return new Response(
+    new ReadableStream({
+      async start(controller) {
+        for (const message of messages) {
+          controller.enqueue(
+            encoder.encode(`${JSON.stringify(message)}\n`),
+          );
+          if (delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+        controller.close();
+      },
+    }),
+    {
+      status: 200,
+      headers: { "Content-Type": "application/x-ndjson" },
+    },
+  );
+}
+
+function mockFetchSuccess(state: GameState = activeGameState) {
+  return vi.fn().mockResolvedValueOnce(makeJsonResponse(state));
+}
+
 function mockFetchWithTurn(
-  state: GameState = gameState,
+  state: GameState = activeGameState,
   turnResponse: Record<string, unknown> = {
     success: true,
     narrative: "You look around the hall.",
@@ -151,8 +197,10 @@ function mockFetchWithTurn(
 ) {
   return vi
     .fn()
-    .mockResolvedValueOnce({ ok: true, json: async () => state })
-    .mockResolvedValueOnce({ ok: true, json: async () => turnResponse });
+    .mockResolvedValueOnce(makeJsonResponse(state))
+    .mockResolvedValueOnce(
+      makeNdjsonResponse([{ type: "final", result: turnResponse }]),
+    );
 }
 
 // ── Tests ────────────────────────────────────────────────────────
@@ -274,7 +322,7 @@ describe("Game Page", () => {
     // First call resolves (game load), second never resolves (turn)
     global.fetch = vi
       .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => gameState })
+      .mockResolvedValueOnce(makeJsonResponse(activeGameState))
       .mockReturnValueOnce(new Promise(() => {}));
 
     await act(async () => {
@@ -315,6 +363,94 @@ describe("Game Page", () => {
     });
   });
 
+  it("streams narrator text before committing the final turn result", async () => {
+    const user = userEvent.setup();
+    const streamingTurnResponse = {
+      success: true,
+      narrative: "You peer into the hall and discover only bureaucracy.",
+      actionResults: [],
+      newPlayerState: { ...player, turnCount: 1 },
+      worldChanged: false,
+      gameWon: false,
+    };
+
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(makeJsonResponse(activeGameState))
+      .mockResolvedValueOnce(
+        makeNdjsonResponse(
+          [
+            { type: "chunk", chunk: "You peer into " },
+            { type: "chunk", chunk: "the hall..." },
+            { type: "final", result: streamingTurnResponse },
+          ],
+          { delayMs: 10 },
+        ),
+      );
+
+    await act(async () => {
+      render(<GamePage />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Command input")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText("Command input"), "look around{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByText(/You peer into the hall/)).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "You peer into the hall and discover only bureaucracy.",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("requests and renders opening narration for a fresh game", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(makeJsonResponse(gameState))
+      .mockResolvedValueOnce(
+        makeNdjsonResponse(
+          [
+            { type: "chunk", chunk: "You awaken beneath " },
+            { type: "chunk", chunk: "a ceiling of dubious intent." },
+            {
+              type: "final",
+              entry: {
+                turnId: "intro-1",
+                role: "narrator",
+                text: "You awaken beneath a ceiling of dubious intent.",
+                timestamp: Date.now(),
+              },
+            },
+          ],
+          { delayMs: 10 },
+        ),
+      );
+
+    await act(async () => {
+      render(<GamePage />);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("You awaken beneath a ceiling of dubious intent."),
+      ).toBeInTheDocument();
+    });
+
+    expect(global.fetch).toHaveBeenNthCalledWith(2, "/api/game/game-123/intro", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  });
+
   it("shows victory message when game won", async () => {
     const user = userEvent.setup();
     const wonResponse = {
@@ -331,7 +467,7 @@ describe("Game Page", () => {
       gameWon: true,
     };
 
-    global.fetch = mockFetchWithTurn(gameState, wonResponse);
+    global.fetch = mockFetchWithTurn(activeGameState, wonResponse);
 
     await act(async () => {
       render(<GamePage />);

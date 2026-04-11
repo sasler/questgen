@@ -33,6 +33,11 @@ describe("next config", () => {
           "node_modules/@github/copilot-linux-*/copilot",
           "node_modules/@github/copilot-sdk/dist/cjs/**/*",
         ]),
+        "/api/game/\\[id\\]/intro": expect.arrayContaining([
+          "node_modules/@github/copilot-linux-*/package.json",
+          "node_modules/@github/copilot-linux-*/copilot",
+          "node_modules/@github/copilot-sdk/dist/cjs/**/*",
+        ]),
       }),
     );
   });

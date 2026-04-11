@@ -335,7 +335,7 @@ export default function GamePage() {
           };
           setHistory((prev) => [...prev, victoryEntry]);
         }
-        } catch (err) {
+      } catch (err) {
         setStreamingText("");
         const errMsg =
           err instanceof Error ? err.message : "Something went wrong";

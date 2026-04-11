@@ -16,6 +16,7 @@ import {
 } from "@/prompts";
 import { getAIProvider } from "@/providers";
 import type { IAIProvider, AIProviderConfig } from "@/providers/types";
+import { createBufferedNarrativeStream } from "@/lib/narrative-stream";
 import { GameStorage } from "@/lib/storage";
 import type { IGameStorage } from "@/lib/storage";
 
@@ -60,8 +61,21 @@ function parseAIResponse(raw: string): AITurnResponse | null {
   }
 }
 
-function hasWorldChanged(previousWorld: GameWorld, nextWorld: GameWorld): boolean {
-  return JSON.stringify(previousWorld) !== JSON.stringify(nextWorld);
+const WORLD_MUTATION_CHANGE_TYPES = new Set([
+  "item_picked_up",
+  "item_dropped",
+  "lock_unlocked",
+  "puzzle_solved",
+  "npc_state_changed",
+  "connection_revealed",
+  "item_added_to_room",
+  "item_removed_from_room",
+]);
+
+function hasWorldChanged(actionResults: ActionResult[]): boolean {
+  return actionResults.some((result) =>
+    result.stateChanges.some((change) => WORLD_MUTATION_CHANGE_TYPES.has(change.type)),
+  );
 }
 
 function buildDeterministicNarrative(
@@ -367,7 +381,8 @@ export async function processTurn(
     }
   }
 
-  const worldChanged = hasWorldChanged(world, currentWorld);
+  const worldChanged = hasWorldChanged(actionResults);
+  const narrativeStream = createBufferedNarrativeStream(onNarrativeChunk);
 
   // ── 7. Check win condition ──────────────────────────────────────
 
@@ -382,7 +397,7 @@ export async function processTurn(
     currentPlayer,
     history,
     gameWon,
-    onNarrativeChunk,
+    onNarrativeChunk ? narrativeStream.pushChunk : undefined,
   );
 
   // ── 8. Save state ───────────────────────────────────────────────
@@ -437,6 +452,8 @@ export async function processTurn(
         completed: gameWon || metadata.completed,
       });
     }
+
+    narrativeStream.flush();
   } catch (err) {
     return errorResult(
       err instanceof Error ? err.message : "Failed to save game state",

@@ -2,6 +2,7 @@ import { buildLocalContext } from "@/engine";
 import { buildNarrativePrompt, VALIDATED_NARRATION_SYSTEM_PROMPT } from "@/prompts";
 import { getAIProvider } from "@/providers";
 import type { AIProviderConfig, IAIProvider } from "@/providers/types";
+import { createBufferedNarrativeStream } from "@/lib/narrative-stream";
 import { GameStorage } from "@/lib/storage";
 import type { IGameStorage } from "@/lib/storage";
 import type { GameSettings, GameWorld, PlayerState, TurnEntry } from "@/types";
@@ -90,6 +91,7 @@ export async function generateOpeningNarration(
 
   const fallbackNarrative = buildOpeningFallback(world, player);
   let narrative = fallbackNarrative;
+  const narrativeStream = createBufferedNarrativeStream(onNarrativeChunk);
 
   try {
     const prompt = buildNarrativePrompt(
@@ -109,7 +111,7 @@ export async function generateOpeningNarration(
             systemMessage: VALIDATED_NARRATION_SYSTEM_PROMPT,
           },
           aiConfig,
-          onNarrativeChunk,
+          narrativeStream.pushChunk,
         )
       : await ai.generateCompletion(
           prompt,
@@ -134,5 +136,6 @@ export async function generateOpeningNarration(
   };
 
   await store.appendHistory(gameId, entry);
+  narrativeStream.flush();
   return entry;
 }

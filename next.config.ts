@@ -4,6 +4,7 @@ import type { NextConfig } from "next";
 const copilotServerRoutes = [
   "/api/models",
   "/api/game/new",
+  "/api/game/\\[id\\]/intro",
   "/api/game/\\[id\\]/turn",
 ] as const;
 

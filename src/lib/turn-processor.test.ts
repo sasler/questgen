@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { processTurn } from "./turn-processor";
 import type { GameWorld, PlayerState, TurnEntry, GameMetadata, GameSettings } from "@/types";
 import type { IGameStorage } from "@/lib/storage";
 import type { IAIProvider, AIProviderConfig, AICompletionOptions } from "@/providers/types";
-import type { ActionResult } from "@/engine/game-engine";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -368,6 +367,48 @@ describe("processTurn", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
     expect(result.error).toContain("conflict");
+  });
+
+  it("does not emit streamed narration before turn persistence succeeds", async () => {
+    const storage = createMockStorage({ updatePlayerStateResult: false });
+    const provider = createMockProvider([
+      aiResponse("You walk north.", [{ type: "move", direction: "north" }]),
+      "You walk north.",
+    ]);
+    const onNarrativeChunk = vi.fn();
+
+    (provider.streamCompletion as ReturnType<typeof vi.fn>).mockImplementation(
+      async (
+        _prompt: string,
+        _options: AICompletionOptions,
+        _config: AIProviderConfig,
+        onChunk?: (chunk: string) => void,
+      ) => {
+        onChunk?.("You ");
+        onChunk?.("walk north.");
+
+        return {
+          content: "You walk north.",
+          model: "gpt-4",
+          finishReason: "stop",
+        };
+      },
+    );
+
+    const result = await processTurn(
+      "game-1",
+      "go north",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+      onNarrativeChunk,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("conflict");
+    expect(onNarrativeChunk).not.toHaveBeenCalled();
   });
 
   // ── 6. Win condition detected ───────────────────────────────────

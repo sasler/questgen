@@ -5,9 +5,7 @@ import type {
   TurnEntry,
   GameSettings,
   GameMetadata,
-  GameWorldZ,
 } from "@/types";
-import { GameWorldSchema } from "@/types";
 
 // Key prefixes
 const KEYS = {
@@ -97,8 +95,19 @@ export class GameStorage implements IGameStorage {
   async getWorld(gameId: string): Promise<GameWorld | null> {
     const data = await this.redis.get<string>(KEYS.world(gameId));
     if (data === null || data === undefined) return null;
-    const parsed = (typeof data === "string" ? JSON.parse(data) : data) as GameWorldZ;
-    return GameWorldSchema.parse(parsed);
+    const parsed = typeof data === "string" ? JSON.parse(data) : data;
+
+    if (!parsed || typeof parsed !== "object") {
+      return parsed as GameWorld;
+    }
+
+    return {
+      ...parsed,
+      interactables:
+        "interactables" in parsed && parsed.interactables
+          ? parsed.interactables
+          : {},
+    } as GameWorld;
   }
 
   // --- Player State ---

@@ -415,6 +415,17 @@ describe("buildLocalContext", () => {
 
       expect(ctx.roomInteractables).toEqual([]);
     });
+
+    it("defaults missing interactables for legacy worlds", () => {
+      const world = makeTestWorld() as Omit<GameWorld, "interactables"> & {
+        interactables?: Record<string, Interactable>;
+      };
+      delete world.interactables;
+      const player = makePlayer({ currentRoomId: "library" });
+      const ctx = buildLocalContext(world as GameWorld, player, []);
+
+      expect(ctx.roomInteractables).toEqual([]);
+    });
   });
 
   describe("activePuzzles", () => {

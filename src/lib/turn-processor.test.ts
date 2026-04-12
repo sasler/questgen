@@ -853,6 +853,63 @@ describe("processTurn", () => {
     expect(provider.generateCompletion).toHaveBeenCalledTimes(1);
   });
 
+  it("does not deterministically resolve an item command for items outside the inventory", async () => {
+    const world = createTestWorld({
+      rooms: {
+        ...createTestWorld().rooms,
+        room1: {
+          ...createTestWorld().rooms.room1,
+          itemIds: ["toolkit"],
+        },
+      },
+      items: {
+        ...createTestWorld().items,
+        toolkit: {
+          id: "toolkit",
+          name: "Maintenance Toolkit",
+          description: "A toolkit full of suspiciously optimistic tools.",
+          portable: true,
+          usableWith: ["relay-console"],
+          properties: {},
+        },
+      },
+      interactables: {
+        "relay-console": {
+          id: "relay-console",
+          roomId: "room1",
+          name: "Relay Console",
+          description: "A relay console that badly needs a competent toolkit.",
+          aliases: ["console", "relay", "relay console"],
+          state: "offline",
+          properties: {},
+        },
+      },
+    });
+    const player = createTestPlayer({ inventory: [] });
+    const storage = createMockStorage({ world, player });
+    const provider = createMockProvider([
+      aiResponse(
+        "You eye the relay console, but without actually holding the toolkit this remains an aspirational maintenance strategy.",
+        [],
+      ),
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "use toolkit on relay console",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.actionResults).toEqual([]);
+    expect(storage.saveWorld).not.toHaveBeenCalled();
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
+  });
+
   // ── Edge cases ──────────────────────────────────────────────────
 
   it("should handle AI response wrapped in markdown code blocks", async () => {

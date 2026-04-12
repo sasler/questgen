@@ -130,7 +130,7 @@ function resolveNPCs(world: GameWorld, npcIds: string[]): NPC[] {
 }
 
 function resolveInteractables(world: GameWorld, roomId: string): Interactable[] {
-  return Object.values(world.interactables).filter(
+  return Object.values(world.interactables ?? {}).filter(
     (interactable) => interactable.roomId === roomId
   );
 }

@@ -179,7 +179,6 @@ function resolveReferencedItem(
 
   const candidateIds = new Set<string>([
     ...player.inventory,
-    ...Object.keys(world.items),
   ]);
   let bestItem: Item | null = null;
   let bestScore = 0;
@@ -289,6 +288,7 @@ const WORLD_MUTATION_CHANGE_TYPES = new Set([
   "item_dropped",
   "lock_unlocked",
   "puzzle_solved",
+  "interactable_state_changed",
   "npc_state_changed",
   "connection_revealed",
   "item_added_to_room",

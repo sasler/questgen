@@ -86,6 +86,7 @@ const world: GameWorld = {
   rooms,
   items,
   npcs,
+  interactables: {},
   connections,
   puzzles: {},
   locks: {},

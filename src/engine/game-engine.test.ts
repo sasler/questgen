@@ -54,7 +54,7 @@ function createTestWorld(overrides?: Partial<GameWorld>): GameWorld {
         name: "Red Gem",
         description: "A sparkling gem.",
         portable: true,
-        usableWith: ["puzzle1"],
+        usableWith: ["console1"],
         properties: {},
       },
       heavy_statue: {
@@ -92,6 +92,26 @@ function createTestWorld(overrides?: Partial<GameWorld>): GameWorld {
         state: "hostile",
       },
     },
+    interactables: {
+      console1: {
+        id: "console1",
+        roomId: "room1",
+        name: "Relay Console",
+        description: "A humming console that clearly wants a gem for reasons of puzzle design.",
+        aliases: ["console", "relay", "relay console"],
+        state: "offline",
+        properties: {},
+      },
+      door1: {
+        id: "door1",
+        roomId: "room2",
+        name: "Vault Door",
+        description: "A heavy door with all the warmth of institutional metalwork.",
+        aliases: ["door", "vault door"],
+        state: "locked",
+        properties: {},
+      },
+    },
     connections: [
       {
         fromRoomId: "room1",
@@ -121,7 +141,12 @@ function createTestWorld(overrides?: Partial<GameWorld>): GameWorld {
         roomId: "room1",
         description: "Place the gem to unlock the path.",
         state: "unsolved",
-        solution: { action: "place_gem", itemIds: ["gem1"] },
+        solution: {
+          action: "place_gem",
+          itemIds: ["gem1"],
+          targetInteractableId: "console1",
+          targetState: "online",
+        },
         reward: { type: "unlock", targetId: "lock1" },
       },
       puzzle2: {
@@ -158,6 +183,8 @@ function createTestWorld(overrides?: Partial<GameWorld>): GameWorld {
         state: "locked",
         mechanism: "key",
         keyItemId: "key1",
+        targetInteractableId: "door1",
+        unlockedState: "open",
       },
       lock_puzzle: {
         id: "lock_puzzle",
@@ -513,16 +540,72 @@ describe("use_item action", () => {
     const world = createTestWorld();
     const player = createTestPlayer({ inventory: ["gem1"] });
     const { result, world: newWorld } = applyAction(
-      { type: "use_item", itemId: "gem1", targetId: "puzzle1" },
+      { type: "use_item", itemId: "gem1", targetId: "console1" },
       world,
       player
     );
 
     expect(result.success).toBe(true);
     expect(newWorld.puzzles["puzzle1"].state).toBe("solved");
+    expect(newWorld.interactables["console1"].state).toBe("online");
     expect(result.stateChanges).toContainEqual(
       expect.objectContaining({ type: "puzzle_solved" })
     );
+  });
+
+  it("does not solve an interactable-backed puzzle with the wrong item", () => {
+    const baseWorld = createTestWorld();
+    const world = createTestWorld({
+      items: {
+        ...baseWorld.items,
+        potion: {
+          ...baseWorld.items.potion,
+          usableWith: ["guard1", "console1"],
+        },
+      },
+    });
+    const player = createTestPlayer({ inventory: ["potion"] });
+    const { result, world: newWorld } = applyAction(
+      { type: "use_item", itemId: "potion", targetId: "console1" },
+      world,
+      player
+    );
+
+    expect(result.success).toBe(true);
+    expect(newWorld.puzzles["puzzle1"].state).toBe("unsolved");
+    expect(result.stateChanges).not.toContainEqual(
+      expect.objectContaining({ type: "puzzle_solved" })
+    );
+  });
+
+  it("uses a key on a lock's interactable target", () => {
+    const world = createTestWorld();
+    const player = createTestPlayer({ inventory: ["key1"], currentRoomId: "room2" });
+    const { result, world: newWorld } = applyAction(
+      { type: "use_item", itemId: "key1", targetId: "door1" },
+      world,
+      player
+    );
+
+    expect(result.success).toBe(true);
+    expect(newWorld.locks["lock1"].state).toBe("unlocked");
+    expect(newWorld.interactables["door1"].state).toBe("open");
+    expect(result.stateChanges).toContainEqual(
+      expect.objectContaining({ type: "lock_unlocked" })
+    );
+  });
+
+  it("fails when an interactable target is not in the current room", () => {
+    const world = createTestWorld();
+    const player = createTestPlayer({ inventory: ["gem1"], currentRoomId: "room2" });
+    const { result } = applyAction(
+      { type: "use_item", itemId: "gem1", targetId: "console1" },
+      world,
+      player
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain("not here");
   });
 
   it("uses an item on an NPC target", () => {

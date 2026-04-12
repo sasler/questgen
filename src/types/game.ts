@@ -30,6 +30,17 @@ export interface NPC {
   state: string;
 }
 
+// Interactable room object
+export interface Interactable {
+  id: string;
+  roomId: string;
+  name: string;
+  description: string;
+  aliases: string[];
+  state: string;
+  properties: Record<string, string | number | boolean>;
+}
+
 // Connection between rooms
 export interface Connection {
   fromRoomId: string;
@@ -52,6 +63,8 @@ export interface Puzzle {
     action: string;
     itemIds?: string[];
     npcId?: string;
+    targetInteractableId?: string;
+    targetState?: string;
     description?: string;
   };
   reward: {
@@ -68,6 +81,8 @@ export interface Lock {
   mechanism: "key" | "puzzle" | "npc";
   keyItemId?: string;
   puzzleId?: string;
+  targetInteractableId?: string;
+  unlockedState?: string;
   conditionDescription?: string;
 }
 
@@ -83,6 +98,7 @@ export interface GameWorld {
   rooms: Record<string, Room>;
   items: Record<string, Item>;
   npcs: Record<string, NPC>;
+  interactables: Record<string, Interactable>;
   connections: Connection[];
   puzzles: Record<string, Puzzle>;
   locks: Record<string, Lock>;

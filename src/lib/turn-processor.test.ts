@@ -7,7 +7,7 @@ import type { IAIProvider, AIProviderConfig, AICompletionOptions } from "@/provi
 // ── Test helpers ────────────────────────────────────────────────────
 
 function createTestWorld(overrides?: Partial<GameWorld>): GameWorld {
-  return {
+  const world: GameWorld = {
     rooms: {
       room1: {
         id: "room1",
@@ -58,6 +58,7 @@ function createTestWorld(overrides?: Partial<GameWorld>): GameWorld {
         state: "idle",
       },
     },
+    interactables: {},
     connections: [
       {
         fromRoomId: "room1",
@@ -104,7 +105,12 @@ function createTestWorld(overrides?: Partial<GameWorld>): GameWorld {
       description: "Reach the Victory Chamber",
     },
     startRoomId: "room1",
+  };
+
+  return {
+    ...world,
     ...overrides,
+    interactables: overrides?.interactables ?? world.interactables,
   };
 }
 
@@ -712,12 +718,9 @@ describe("processTurn", () => {
 
   it("should return validated narration instead of speculative proposal narration", async () => {
     const storage = createMockStorage();
-    const provider = createMockProvider([
-      aiResponse("You stride east through the unlocked doorway.", [
-        { type: "move", direction: "east" },
-      ]),
+    const provider = createMockProvider(
       "The door remains stubbornly locked, which is exactly the sort of optimism-correction the universe specializes in.",
-    ]);
+    );
 
     const result = await processTurn(
       "game-1",
@@ -735,10 +738,176 @@ describe("processTurn", () => {
     expect(result.narrative).toBe(
       "The door remains stubbornly locked, which is exactly the sort of optimism-correction the universe specializes in.",
     );
-    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(1);
 
     const narratorEntry = (storage.appendHistory as ReturnType<typeof vi.fn>).mock.calls[1][1];
     expect(narratorEntry.text).toBe(result.narrative);
+  });
+
+  it("deterministically follows the real room graph for direct movement commands", async () => {
+    const player = createTestPlayer({
+      currentRoomId: "room2",
+      visitedRooms: ["room1", "room2"],
+    });
+    const storage = createMockStorage({ player });
+    const provider = createMockProvider([
+      "You head back south with all the grace of a reasonably competent mammal.",
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "south",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.actionResults).toHaveLength(1);
+    expect(result.actionResults[0]).toMatchObject({
+      success: true,
+      message: expect.stringContaining("move south"),
+    });
+    expect(result.newPlayerState.currentRoomId).toBe("room1");
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(1);
+    expect(storage.saveWorld).not.toHaveBeenCalled();
+  });
+
+  it("deterministically resolves hinted use-item commands against interactable aliases", async () => {
+    const world = createTestWorld({
+      items: {
+        toolkit: {
+          id: "toolkit",
+          name: "Maintenance Toolkit",
+          description: "A toolkit full of suspiciously optimistic tools.",
+          portable: true,
+          usableWith: ["relay-console"],
+          properties: {},
+        },
+      },
+      interactables: {
+        "relay-console": {
+          id: "relay-console",
+          roomId: "room1",
+          name: "Relay Console",
+          description: "A relay console that badly needs a competent toolkit.",
+          aliases: ["console", "relay", "relay console"],
+          state: "offline",
+          properties: {},
+        },
+      },
+      puzzles: {
+        "relay-puzzle": {
+          id: "relay-puzzle",
+          name: "Relay Calibration",
+          roomId: "room1",
+          description: "The relay will cooperate if someone uses the toolkit on it.",
+          state: "unsolved",
+          solution: {
+            action: "use",
+            itemIds: ["toolkit"],
+            targetInteractableId: "relay-console",
+            targetState: "online",
+          },
+          reward: { type: "unlock", targetId: "lock1" },
+        },
+      },
+      locks: {
+        lock1: {
+          id: "lock1",
+          state: "locked",
+          mechanism: "puzzle",
+          puzzleId: "relay-puzzle",
+        },
+      },
+    });
+    const player = createTestPlayer({ inventory: ["toolkit"] });
+    const storage = createMockStorage({ world, player });
+    const provider = createMockProvider([
+      "The relay console finally stops impersonating scrap metal and starts working.",
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "use toolkit on relay console",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.actionResults).toHaveLength(1);
+    expect(result.actionResults[0].success).toBe(true);
+    expect(result.worldChanged).toBe(true);
+    expect(result.narrative).toContain("relay console");
+    expect(storage.saveWorld).toHaveBeenCalledOnce();
+
+    const savedWorld = (storage.saveWorld as ReturnType<typeof vi.fn>).mock.calls[0][1] as GameWorld;
+    expect(savedWorld.interactables["relay-console"].state).toBe("online");
+    expect(savedWorld.puzzles["relay-puzzle"].state).toBe("solved");
+    expect(savedWorld.locks["lock1"].state).toBe("unlocked");
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not deterministically resolve an item command for items outside the inventory", async () => {
+    const world = createTestWorld({
+      rooms: {
+        ...createTestWorld().rooms,
+        room1: {
+          ...createTestWorld().rooms.room1,
+          itemIds: ["toolkit"],
+        },
+      },
+      items: {
+        ...createTestWorld().items,
+        toolkit: {
+          id: "toolkit",
+          name: "Maintenance Toolkit",
+          description: "A toolkit full of suspiciously optimistic tools.",
+          portable: true,
+          usableWith: ["relay-console"],
+          properties: {},
+        },
+      },
+      interactables: {
+        "relay-console": {
+          id: "relay-console",
+          roomId: "room1",
+          name: "Relay Console",
+          description: "A relay console that badly needs a competent toolkit.",
+          aliases: ["console", "relay", "relay console"],
+          state: "offline",
+          properties: {},
+        },
+      },
+    });
+    const player = createTestPlayer({ inventory: [] });
+    const storage = createMockStorage({ world, player });
+    const provider = createMockProvider([
+      aiResponse(
+        "You eye the relay console, but without actually holding the toolkit this remains an aspirational maintenance strategy.",
+        [],
+      ),
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "use toolkit on relay console",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.actionResults).toEqual([]);
+    expect(storage.saveWorld).not.toHaveBeenCalled();
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
   });
 
   // ── Edge cases ──────────────────────────────────────────────────

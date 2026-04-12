@@ -95,7 +95,19 @@ export class GameStorage implements IGameStorage {
   async getWorld(gameId: string): Promise<GameWorld | null> {
     const data = await this.redis.get<string>(KEYS.world(gameId));
     if (data === null || data === undefined) return null;
-    return typeof data === "string" ? JSON.parse(data) : data;
+    const parsed = typeof data === "string" ? JSON.parse(data) : data;
+
+    if (!parsed || typeof parsed !== "object") {
+      return parsed as GameWorld;
+    }
+
+    return {
+      ...parsed,
+      interactables:
+        "interactables" in parsed && parsed.interactables
+          ? parsed.interactables
+          : {},
+    } as GameWorld;
   }
 
   // --- Player State ---

@@ -13,6 +13,7 @@ import type {
   Room,
   Item,
   NPC,
+  Interactable,
   Puzzle,
   TurnEntry,
   GameGenerationRequest,
@@ -50,6 +51,19 @@ function makeNPC(overrides: Partial<NPC> = {}): NPC {
     description: "A two-headed galactic president.",
     dialogue: { greeting: "Hey, hoopy frood!" },
     state: "idle",
+    ...overrides,
+  };
+}
+
+function makeInteractable(overrides: Partial<Interactable> = {}): Interactable {
+  return {
+    id: "relay-console",
+    roomId: "bridge",
+    name: "Relay Console",
+    description: "A console that would like to be useful but is making a point of not being.",
+    aliases: ["console", "relay console"],
+    state: "offline",
+    properties: {},
     ...overrides,
   };
 }
@@ -106,6 +120,7 @@ function makeTurnParams(overrides: Partial<TurnPromptParams> = {}): TurnPromptPa
     inventory: [makeItem()],
     roomItems: [makeItem({ id: "panel", name: "Control Panel", portable: false })],
     roomNPCs: [makeNPC()],
+    roomInteractables: [makeInteractable()],
     activePuzzles: [makePuzzle()],
     recentHistory: [
       makeTurnEntry({ role: "player", text: "go north" }),
@@ -272,6 +287,12 @@ describe("buildTurnPrompt", () => {
   it("includes NPC names", () => {
     const prompt = buildTurnPrompt(makeTurnParams());
     expect(prompt).toContain("Zaphod Beeblebrox");
+  });
+
+  it("includes room interactables and aliases", () => {
+    const prompt = buildTurnPrompt(makeTurnParams());
+    expect(prompt).toContain("Relay Console");
+    expect(prompt).toContain("relay console");
   });
 
   it("includes active puzzle names", () => {

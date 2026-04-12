@@ -1,10 +1,16 @@
 import { renderAsciiMap } from "@/components/AsciiMap";
-import type { Connection, GameWorld, Lock, PlayerState, Puzzle, Room, WinCondition } from "@/types";
+import type { Connection, GameWorld, Interactable, Lock, PlayerState, Puzzle, Room, WinCondition } from "@/types";
 
 interface PathStep {
   roomId: string;
   directionFromPrevious?: string;
   connection?: Connection;
+}
+
+interface InteractableDebugDetails {
+  puzzleTargets: string;
+  lockTargets: string;
+  status: string;
 }
 
 function findItemRoom(world: GameWorld, itemId: string): Room | null {
@@ -38,6 +44,13 @@ function getPuzzleSolutionDescription(world: GameWorld, puzzle: Puzzle): string 
     parts.push(`while dealing with ${npcName}`);
   }
 
+  if (puzzle.solution.targetInteractableId) {
+    const interactable =
+      world.interactables[puzzle.solution.targetInteractableId]?.name ??
+      puzzle.solution.targetInteractableId;
+    parts.push(`on ${interactable}`);
+  }
+
   return `${parts.join(" ")} in ${world.rooms[puzzle.roomId]?.name ?? puzzle.roomId}.`;
 }
 
@@ -55,10 +68,165 @@ function getLockConditionDescription(world: GameWorld, lock: Lock): string {
     const puzzleName = lock.puzzleId
       ? world.puzzles[lock.puzzleId]?.name ?? lock.puzzleId
       : "the required puzzle";
-    return `Solve ${puzzleName} to unlock this lock.`;
+    const interactable = lock.targetInteractableId
+      ? world.interactables[lock.targetInteractableId]?.name ?? lock.targetInteractableId
+      : "this lock";
+    return `Solve ${puzzleName} to unlock ${interactable}.`;
   }
 
   return "Change the required NPC state to unlock this lock.";
+}
+
+function formatItemNames(world: GameWorld, itemIds: string[]): string {
+  return itemIds.map((itemId) => world.items[itemId]?.name ?? itemId).join(", ");
+}
+
+function formatInteractableTarget(
+  world: GameWorld,
+  interactableId?: string,
+  targetState?: string,
+): string {
+  if (!interactableId) {
+    return "—";
+  }
+
+  const interactable = world.interactables[interactableId];
+  const name = interactable?.name ?? interactableId;
+  return targetState ? `${name} ${interactable?.state ?? "?"} → ${targetState}` : name;
+}
+
+function getPuzzleRequirementLabel(world: GameWorld, puzzle: Puzzle): string {
+  const parts = [puzzle.solution.action];
+
+  if ((puzzle.solution.itemIds ?? []).length > 0) {
+    parts.push(formatItemNames(world, puzzle.solution.itemIds ?? []));
+  }
+
+  if (puzzle.solution.npcId) {
+    parts.push(world.npcs[puzzle.solution.npcId]?.name ?? puzzle.solution.npcId);
+  }
+
+  return parts.join(" + ");
+}
+
+function getPuzzleStatusLabel(world: GameWorld, player: PlayerState, puzzle: Puzzle): string {
+  const missingItems = (puzzle.solution.itemIds ?? []).filter(
+    (itemId) => !player.inventory.includes(itemId),
+  );
+  const status: string[] = [];
+
+  if (puzzle.state === "solved") {
+    status.push("solved");
+  }
+
+  if (missingItems.length > 0) {
+    status.push(`missing ${formatItemNames(world, missingItems)}`);
+  } else if ((puzzle.solution.itemIds ?? []).length > 0) {
+    status.push("items ready");
+  }
+
+  if (puzzle.solution.targetInteractableId) {
+    const interactable = world.interactables[puzzle.solution.targetInteractableId];
+    if (interactable) {
+      status.push(
+        puzzle.solution.targetState
+          ? `${interactable.name} is ${interactable.state} (needs ${puzzle.solution.targetState})`
+          : `${interactable.name} is ${interactable.state}`,
+      );
+    }
+  }
+
+  return status.join("; ") || "ready";
+}
+
+function getLockDependencyLabel(world: GameWorld, lock: Lock): string {
+  if (lock.mechanism === "key") {
+    const itemName = lock.keyItemId ? world.items[lock.keyItemId]?.name ?? lock.keyItemId : "unknown key";
+    return `key: ${itemName}`;
+  }
+
+  if (lock.mechanism === "puzzle") {
+    const puzzleName = lock.puzzleId ? world.puzzles[lock.puzzleId]?.name ?? lock.puzzleId : "unknown puzzle";
+    return `puzzle: ${puzzleName}`;
+  }
+
+  return "npc state";
+}
+
+function getLockStatusLabel(world: GameWorld, player: PlayerState, lock: Lock): string {
+  if (lock.state === "unlocked") {
+    return "unlocked";
+  }
+
+  if (lock.mechanism === "key" && lock.keyItemId) {
+    const itemName = world.items[lock.keyItemId]?.name ?? lock.keyItemId;
+    return player.inventory.includes(lock.keyItemId)
+      ? `${itemName} ready`
+      : `missing ${itemName}`;
+  }
+
+  if (lock.mechanism === "puzzle" && lock.puzzleId) {
+    const puzzle = world.puzzles[lock.puzzleId];
+    if (!puzzle) {
+      return "missing linked puzzle";
+    }
+
+    return puzzle.state === "solved"
+      ? `${puzzle.name} solved`
+      : `waiting for ${puzzle.name}; ${getPuzzleStatusLabel(world, player, puzzle)}`;
+  }
+
+  return "waiting on NPC state";
+}
+
+function getInteractableDebugDetails(
+  world: GameWorld,
+  player: PlayerState,
+  interactable: Interactable,
+): InteractableDebugDetails {
+  const puzzleTargets = Object.values(world.puzzles).filter(
+    (puzzle) => puzzle.solution.targetInteractableId === interactable.id,
+  );
+  const lockTargets = Object.values(world.locks).filter(
+    (lock) => lock.targetInteractableId === interactable.id,
+  );
+
+  return {
+    puzzleTargets:
+      puzzleTargets
+        .map((puzzle) => `${puzzle.name} (${puzzle.state}) → ${puzzle.solution.targetState ?? "?"}`)
+        .join("; ") || "—",
+    lockTargets:
+      lockTargets
+        .map((lock) => `${lock.id} (${getLockDependencyLabel(world, lock)}) → ${lock.unlockedState ?? "?"}`)
+        .join("; ") || "—",
+    status:
+      [
+        ...puzzleTargets.map((puzzle) => getPuzzleStatusLabel(world, player, puzzle)),
+        ...lockTargets.map((lock) => getLockStatusLabel(world, player, lock)),
+      ]
+        .filter(Boolean)
+        .join(" | ") || `state: ${interactable.state}`,
+  };
+}
+
+function buildCurrentRoomInteractableRows(world: GameWorld, player: PlayerState): string[][] {
+  const currentRoomId = player.currentRoomId;
+
+  return Object.values(world.interactables)
+    .filter((interactable) => interactable.roomId === currentRoomId)
+    .map((interactable) => {
+      const details = getInteractableDebugDetails(world, player, interactable);
+      return [
+        interactable.id,
+        interactable.name,
+        interactable.state,
+        interactable.aliases.join(", "),
+        details.puzzleTargets,
+        details.lockTargets,
+        details.status,
+      ];
+    });
 }
 
 function formatTable(
@@ -135,36 +303,49 @@ function findPath(
 
 function buildLockRows(world: GameWorld, player: PlayerState): string[][] {
   return Object.values(world.locks).map((lock) => {
-    let status = lock.state;
-
-    if (lock.state === "locked" && lock.mechanism === "key" && lock.keyItemId) {
-      status += player.inventory.includes(lock.keyItemId) ? " (key ready)" : " (missing key)";
-    }
-
-    if (lock.state === "locked" && lock.mechanism === "puzzle" && lock.puzzleId) {
-      status += world.puzzles[lock.puzzleId]?.state === "solved" ? " (puzzle solved)" : " (puzzle pending)";
-    }
-
-    return [lock.id, status, getLockConditionDescription(world, lock)];
+    return [
+      lock.id,
+      lock.state,
+      formatInteractableTarget(world, lock.targetInteractableId, lock.unlockedState),
+      getLockDependencyLabel(world, lock),
+      getLockStatusLabel(world, player, lock),
+      getLockConditionDescription(world, lock),
+    ];
   });
 }
 
 function buildPuzzleRows(world: GameWorld, player: PlayerState): string[][] {
   return Object.values(world.puzzles).map((puzzle) => {
-    const missingItems = (puzzle.solution.itemIds ?? []).filter(
-      (itemId) => !player.inventory.includes(itemId),
-    );
-    const missingLabel =
-      missingItems.length > 0
-        ? missingItems.map((itemId) => world.items[itemId]?.name ?? itemId).join(", ")
-        : "ready";
-
     return [
       puzzle.id,
       puzzle.state,
       world.rooms[puzzle.roomId]?.name ?? puzzle.roomId,
-      missingLabel,
+      formatInteractableTarget(
+        world,
+        puzzle.solution.targetInteractableId,
+        puzzle.solution.targetState,
+      ),
+      getPuzzleRequirementLabel(world, puzzle),
+      getPuzzleStatusLabel(world, player, puzzle),
       getPuzzleSolutionDescription(world, puzzle),
+    ];
+  });
+}
+
+function buildInteractableRows(world: GameWorld, player: PlayerState): string[][] {
+  return Object.values(world.interactables).map((interactable: Interactable) => {
+    const details = getInteractableDebugDetails(world, player, interactable);
+
+    return [
+      interactable.id,
+      interactable.name,
+      interactable.state,
+      world.rooms[interactable.roomId]?.name ?? interactable.roomId,
+      interactable.aliases.join(", "),
+      details.puzzleTargets,
+      details.lockTargets,
+      details.status,
+      interactable.description,
     ];
   });
 }
@@ -265,15 +446,55 @@ export function renderEntityTables(world: GameWorld, player: PlayerState): strin
     `Current room: ${currentRoom}`,
     `Inventory: ${inventory}`,
     "",
+    "CURRENT ROOM INTERACTABLES",
+    formatTable(
+      ["id", "name", "state", "aliases", "puzzle targets", "lock targets", "status"],
+      buildCurrentRoomInteractableRows(world, player),
+    ),
+    "",
     "PUZZLES",
-    formatTable(["id", "state", "room", "missing", "solution"], buildPuzzleRows(world, player)),
+    formatTable(
+      ["id", "state", "room", "target", "required", "status", "solution"],
+      buildPuzzleRows(world, player),
+    ),
     "",
     "LOCKS",
-    formatTable(["id", "state", "condition"], buildLockRows(world, player)),
+    formatTable(
+      ["id", "state", "target", "dependency", "status", "condition"],
+      buildLockRows(world, player),
+    ),
+    "",
+    "WORLD INTERACTABLES",
+    formatTable(
+      [
+        "id",
+        "name",
+        "state",
+        "room",
+        "aliases",
+        "puzzle targets",
+        "lock targets",
+        "status",
+        "description",
+      ],
+      buildInteractableRows(world, player),
+    ),
     "",
     "WIN CONDITION",
     formatTable(["type", "status", "goal"], buildWinRows(world, player)),
   ].join("\n");
+}
+
+export function buildRoomInteractableHintLines(
+  world: GameWorld,
+  player: PlayerState,
+): string[] {
+  return Object.values(world.interactables)
+    .filter((interactable) => interactable.roomId === player.currentRoomId)
+    .map((interactable) => {
+      const details = getInteractableDebugDetails(world, player, interactable);
+      return `- ${interactable.name} (${interactable.id}): ${interactable.description} [state: ${interactable.state}; aliases: ${interactable.aliases.join(", ")}; puzzles: ${details.puzzleTargets}; locks: ${details.lockTargets}; status: ${details.status}]`;
+    });
 }
 
 export function buildHintFallback(world: GameWorld, player: PlayerState): string {

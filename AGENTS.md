@@ -38,6 +38,8 @@ npx playwright test   # E2E tests (requires dev server running)
 - **AI is NOT the game engine** — deterministic code validates all state changes
 - **World topology is deterministic and seeded per game** — room graphs, blockers, and the win path come from code, not free-form AI output
 - **Connections are single bidirectional edges** — one `Connection` already includes `direction` and `reverseDirection`; do not add mirrored reverse duplicates
+- **Room interactables are explicit authoritative entities** — use persistent interactable records with stable IDs, aliases, and state instead of ad-hoc room prose targets
+- **Movement and direct interactions stay deterministic** — turn parsing may assist, but final room traversal and interactable targeting must resolve in engine code against the current authoritative world state
 - **Local context only** — only current room + neighbors sent to AI per turn
 - **Settings in localStorage** — BYOK keys never sent to server-side storage
 - **Split Redis keys** — world, player, history, settings, metadata stored separately
@@ -49,6 +51,7 @@ npx playwright test   # E2E tests (requires dev server running)
 - **Vercel Copilot runtime stays binary-first** — preserve the `next.config.ts` `serverExternalPackages` and `outputFileTracingIncludes` entries that trace `@github/copilot-sdk` plus the platform `@github/copilot-<platform>-<arch>` executable; falling back to the JS launcher can fail in serverless runtimes and bloat function size
 - **Hidden tester commands stay hidden in the UI** — `/showfullmap` and `/showentitytables` are repo-documented debug tools, not player-facing affordances
 - **Player hints stay actionable but spoiler-bounded** — `/hint` should point to the next useful step in tone, not dump the whole solution
+- **All room surfaces use authoritative interactable state** — `RoomInfoPanel`, visible hints, and `/showentitytables` should describe the same deterministic interactables; richer debug output must stay consistent without becoming a visible UI affordance
 - **Copilot SDK text streaming uses delta events** — enable session streaming and forward `assistant.message_delta` chunks immediately; do not buffer them until the end
 
 ## Key Directories

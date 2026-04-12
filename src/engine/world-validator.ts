@@ -162,6 +162,27 @@ export function validateWorld(world: GameWorld): ValidationResult {
         { lockId: lock.id, puzzleId: lock.puzzleId },
       );
     }
+    if (lock.targetInteractableId && !world.interactables[lock.targetInteractableId]) {
+      push(
+        errors,
+        "INVALID_INTERACTABLE_REF",
+        `Lock "${lock.id}" references non-existent interactable "${lock.targetInteractableId}".`,
+        "error",
+        { lockId: lock.id, interactableId: lock.targetInteractableId },
+      );
+    }
+  }
+
+  for (const interactable of Object.values(world.interactables)) {
+    if (!world.rooms[interactable.roomId]) {
+      push(
+        errors,
+        "INVALID_INTERACTABLE_ROOM_REF",
+        `Interactable "${interactable.id}" references non-existent room "${interactable.roomId}".`,
+        "error",
+        { interactableId: interactable.id, roomId: interactable.roomId },
+      );
+    }
   }
 
   // Puzzle refs
@@ -196,6 +217,30 @@ export function validateWorld(world: GameWorld): ValidationResult {
         "error",
         { puzzleId: puzzle.id, npcId: puzzle.solution.npcId },
       );
+    }
+    if (
+      puzzle.solution.targetInteractableId &&
+      !world.interactables[puzzle.solution.targetInteractableId]
+    ) {
+      push(
+        errors,
+        "INVALID_INTERACTABLE_REF",
+        `Puzzle "${puzzle.id}" solution references non-existent interactable "${puzzle.solution.targetInteractableId}".`,
+        "error",
+        { puzzleId: puzzle.id, interactableId: puzzle.solution.targetInteractableId },
+      );
+    }
+    if (puzzle.solution.targetInteractableId) {
+      const interactable = world.interactables[puzzle.solution.targetInteractableId];
+      if (interactable && interactable.roomId !== puzzle.roomId) {
+        push(
+          errors,
+          "PUZZLE_TARGET_ROOM_MISMATCH",
+          `Puzzle "${puzzle.id}" target interactable "${interactable.id}" is not in puzzle room "${puzzle.roomId}".`,
+          "error",
+          { puzzleId: puzzle.id, interactableId: interactable.id, roomId: puzzle.roomId },
+        );
+      }
     }
   }
 

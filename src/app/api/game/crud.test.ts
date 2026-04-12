@@ -57,6 +57,7 @@ const sampleWorld: GameWorld = {
   rooms: { r1: { id: "r1", name: "Start", description: "Starting room", itemIds: [], npcIds: [] } },
   items: {},
   npcs: {},
+  interactables: {},
   connections: [],
   puzzles: {},
   locks: {},

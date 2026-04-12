@@ -348,28 +348,42 @@ describe("CopilotProvider", () => {
   });
 
   describe("streamCompletion", () => {
-    it("calls onChunk for each assistant.message event", async () => {
+    it("calls onChunk for each assistant.message_delta event", async () => {
       const chunks: string[] = [];
       const onChunk = (chunk: string) => chunks.push(chunk);
 
       // Capture the event handler registered with session.on
-      let capturedHandler: ((event: { type: string; data: { content: string } }) => void) | undefined;
+      let capturedHandler:
+        | ((event: { type: string; data: { deltaContent: string } }) => void)
+        | undefined;
 
       const session = makeSession({
         on: vi.fn().mockImplementation(
-          (eventType: string, handler: (event: { type: string; data: { content: string } }) => void) => {
-            if (eventType === "assistant.message") {
+          (
+            eventType: string,
+            handler: (event: { type: string; data: { deltaContent: string } }) => void,
+          ) => {
+            if (eventType === "assistant.message_delta") {
               capturedHandler = handler;
             }
             return vi.fn(); // unsubscribe function
           },
         ),
-        // sendAndWait fires the captured on("assistant.message") handler before resolving
+        // sendAndWait fires the captured on("assistant.message_delta") handler before resolving
         sendAndWait: vi.fn().mockImplementation(async () => {
           if (capturedHandler) {
-            capturedHandler({ type: "assistant.message", data: { content: "The " } });
-            capturedHandler({ type: "assistant.message", data: { content: "dragon " } });
-            capturedHandler({ type: "assistant.message", data: { content: "attacks!" } });
+            capturedHandler({
+              type: "assistant.message_delta",
+              data: { deltaContent: "The " },
+            });
+            capturedHandler({
+              type: "assistant.message_delta",
+              data: { deltaContent: "dragon " },
+            });
+            capturedHandler({
+              type: "assistant.message_delta",
+              data: { deltaContent: "attacks!" },
+            });
           }
           return { data: { content: "The dragon attacks!" } };
         }),
@@ -387,6 +401,24 @@ describe("CopilotProvider", () => {
       expect(chunks).toEqual(["The ", "dragon ", "attacks!"]);
       expect(result.content).toBe("The dragon attacks!");
       expect(result.model).toBe("gpt-5");
+    });
+
+    it("enables streaming on the SDK session config", async () => {
+      const session = makeSession({
+        on: vi.fn().mockReturnValue(vi.fn()),
+        sendAndWait: vi.fn().mockResolvedValue({
+          data: { content: "done" },
+        }),
+      });
+      mockCreateSession.mockResolvedValue(session);
+
+      await provider.streamCompletion("test", options, copilotConfig, () => {});
+
+      expect(mockCreateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          streaming: true,
+        }),
+      );
     });
 
     it("disconnects session after streaming completes", async () => {

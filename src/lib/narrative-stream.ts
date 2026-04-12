@@ -6,24 +6,16 @@ export interface BufferedNarrativeStream {
 export function createBufferedNarrativeStream(
   onNarrativeChunk?: (chunk: string) => void,
 ): BufferedNarrativeStream {
-  const chunks: string[] = [];
-
   return {
     pushChunk(chunk: string) {
       if (!onNarrativeChunk) {
         return;
       }
 
-      chunks.push(chunk);
+      onNarrativeChunk(chunk);
     },
     flush() {
-      if (!onNarrativeChunk) {
-        return;
-      }
-
-      for (const chunk of chunks) {
-        onNarrativeChunk(chunk);
-      }
+      // Chunks are forwarded immediately to preserve true streaming.
     },
   };
 }

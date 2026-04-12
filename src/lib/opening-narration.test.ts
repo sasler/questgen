@@ -142,7 +142,7 @@ const defaultAIConfig: AIProviderConfig = {
 };
 
 describe("generateOpeningNarration", () => {
-  it("flushes buffered intro chunks after the history entry is persisted", async () => {
+  it("forwards intro chunks immediately while generating narration", async () => {
     const storage = createStorage();
     const provider = createProvider();
     const onNarrativeChunk = vi.fn();
@@ -162,7 +162,7 @@ describe("generateOpeningNarration", () => {
     expect(onNarrativeChunk).toHaveBeenNthCalledWith(2, "somewhere unpleasant.");
   });
 
-  it("does not emit intro chunks if persisting the history entry fails", async () => {
+  it("still emits intro chunks even if persisting the history entry later fails", async () => {
     const storage = createStorage();
     const provider = createProvider();
     const onNarrativeChunk = vi.fn();
@@ -182,6 +182,7 @@ describe("generateOpeningNarration", () => {
       ),
     ).rejects.toThrow("storage failed");
 
-    expect(onNarrativeChunk).not.toHaveBeenCalled();
+    expect(onNarrativeChunk).toHaveBeenNthCalledWith(1, "You wake up ");
+    expect(onNarrativeChunk).toHaveBeenNthCalledWith(2, "somewhere unpleasant.");
   });
 });

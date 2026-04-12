@@ -395,7 +395,7 @@ export function AsciiMap({
     <pre
       role="img"
       aria-label="Game map"
-      className="font-mono text-sm leading-tight text-green-400"
+      className="min-w-max font-mono text-sm leading-tight text-green-400"
     >
       {ascii}
     </pre>

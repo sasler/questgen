@@ -1,4 +1,4 @@
-import { renderAsciiMap } from "@/components";
+import { renderAsciiMap } from "@/components/AsciiMap";
 import type { Connection, GameWorld, Lock, PlayerState, Puzzle, Room, WinCondition } from "@/types";
 
 interface PathStep {

@@ -17,6 +17,11 @@ export interface WorldGenResult {
   warnings?: string[];
 }
 
+function formatWorldGenerationError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return `World generation failed: ${message}`;
+}
+
 function deriveTitle(description: string): string {
   return description.length > 60 ? `${description.slice(0, 57)}...` : description;
 }
@@ -42,17 +47,27 @@ export async function generateWorld(
 
   const gameId = crypto.randomUUID();
   const generationSeed = crypto.randomUUID();
-  const world = buildDeterministicWorld(request, generationSeed);
-  const validation = validateWorld(world);
+  let world;
+  let warnings: string[] = [];
 
-  if (!validation.valid) {
+  try {
+    world = buildDeterministicWorld(request, generationSeed);
+    const validation = validateWorld(world);
+
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: `World validation errors: ${validation.errors.map((error) => error.message).join("; ")}`,
+      };
+    }
+
+    warnings = validation.warnings.map((warning) => warning.message);
+  } catch (err) {
     return {
       success: false,
-      error: `World validation errors: ${validation.errors.map((error) => error.message).join("; ")}`,
+      error: formatWorldGenerationError(err),
     };
   }
-
-  const warnings = validation.warnings.map((warning) => warning.message);
 
   try {
     const initialPlayer: PlayerState = {

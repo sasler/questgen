@@ -9,6 +9,7 @@ import type {
 } from "@/types";
 import type { IGameStorage } from "@/lib/storage";
 import * as storageModule from "@/lib/storage";
+import * as deterministicWorldModule from "@/lib/deterministic-world";
 
 function makeRequest(overrides: Partial<GameGenerationRequest> = {}): GameGenerationRequest {
   return {
@@ -213,6 +214,28 @@ describe("generateWorld", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("Storage");
+  });
+
+  it("returns error when deterministic generation throws", async () => {
+    const generatorSpy = vi
+      .spyOn(deterministicWorldModule, "buildDeterministicWorld")
+      .mockImplementation(() => {
+        throw new Error("Unable to place main-path room");
+      });
+
+    const result = await generateWorld(
+      request,
+      settings,
+      "user-1",
+      { mode: "copilot", githubToken: "test-token" },
+      storage,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("World generation failed");
+    expect(result.error).toContain("Unable to place main-path room");
+
+    generatorSpy.mockRestore();
   });
 
   it("returns error when storage initialization throws", async () => {

@@ -264,10 +264,34 @@ function getDirectionOffset(direction: Direction): { x: number; y: number } {
   }
 }
 
-function pickUnusedDirection(usedDirections: Set<Direction>): Direction {
-  return (
-    CARDINAL_DIRECTIONS.find((direction) => !usedDirections.has(direction)) ?? "east"
+function listUnusedDirections(usedDirections: Set<Direction>, rng: () => number): Direction[] {
+  return shuffle(
+    CARDINAL_DIRECTIONS.filter((direction) => !usedDirections.has(direction)),
+    rng,
   );
+}
+
+function findOpenCoordinate(
+  origin: { x: number; y: number },
+  directions: readonly Direction[],
+  occupied: Set<string>,
+  maxDistance = 32,
+): { direction: Direction; coordinate: { x: number; y: number } } | null {
+  for (let distance = 1; distance <= maxDistance; distance += 1) {
+    for (const direction of directions) {
+      const offset = getDirectionOffset(direction);
+      const coordinate = {
+        x: origin.x + offset.x * distance,
+        y: origin.y + offset.y * distance,
+      };
+
+      if (!occupied.has(getCoordinateKey(coordinate.x, coordinate.y))) {
+        return { direction, coordinate };
+      }
+    }
+  }
+
+  return null;
 }
 
 function addConnection(
@@ -346,28 +370,19 @@ export function buildDeterministicWorld(
     const nextRoomId = roomIds[index + 1];
     const currentCoordinate = roomCoordinates.get(currentRoomId)!;
     const currentUsedDirections = usedDirections.get(currentRoomId) ?? new Set<Direction>();
+    const placement = findOpenCoordinate(
+      currentCoordinate,
+      listUnusedDirections(currentUsedDirections, rng),
+      occupied,
+    );
 
-    const candidateDirections = shuffle(CARDINAL_DIRECTIONS, rng).filter((direction) => {
-      if (currentUsedDirections.has(direction)) {
-        return false;
-      }
+    if (!placement) {
+      throw new Error(`Unable to place main-path room from ${currentRoomId}.`);
+    }
 
-      const offset = getDirectionOffset(direction);
-      const nextX = currentCoordinate.x + offset.x;
-      const nextY = currentCoordinate.y + offset.y;
-      return !occupied.has(getCoordinateKey(nextX, nextY));
-    });
-
-    const direction = candidateDirections[0] ?? pickUnusedDirection(currentUsedDirections);
-    const offset = getDirectionOffset(direction);
-    const nextCoordinate = {
-      x: currentCoordinate.x + offset.x,
-      y: currentCoordinate.y + offset.y,
-    };
-
-    roomCoordinates.set(nextRoomId, nextCoordinate);
-    occupied.add(getCoordinateKey(nextCoordinate.x, nextCoordinate.y));
-    addConnection(connections, usedDirections, currentRoomId, nextRoomId, direction);
+    roomCoordinates.set(nextRoomId, placement.coordinate);
+    occupied.add(getCoordinateKey(placement.coordinate.x, placement.coordinate.y));
+    addConnection(connections, usedDirections, currentRoomId, nextRoomId, placement.direction);
   }
 
   for (let branchIndex = 0; branchIndex < branchCount; branchIndex += 1) {
@@ -380,51 +395,51 @@ export function buildDeterministicWorld(
         continue;
       }
 
-      const parentUsedDirections = usedDirections.get(parentRoomId) ?? new Set<Direction>();
-      const candidateDirections = shuffle(CARDINAL_DIRECTIONS, rng).filter((direction) => {
-        if (parentUsedDirections.has(direction)) {
-          return false;
-        }
+      const placement = findOpenCoordinate(
+        parentCoordinate,
+        listUnusedDirections(usedDirections.get(parentRoomId) ?? new Set<Direction>(), rng),
+        occupied,
+      );
 
-        const offset = getDirectionOffset(direction);
-        const branchX = parentCoordinate.x + offset.x;
-        const branchY = parentCoordinate.y + offset.y;
-        return !occupied.has(getCoordinateKey(branchX, branchY));
-      });
-
-      const direction = candidateDirections[0];
-      if (!direction) {
+      if (!placement) {
         continue;
       }
 
-      const offset = getDirectionOffset(direction);
-      const coordinate = {
-        x: parentCoordinate.x + offset.x,
-        y: parentCoordinate.y + offset.y,
-      };
-
-      roomCoordinates.set(branchRoomId, coordinate);
-      occupied.add(getCoordinateKey(coordinate.x, coordinate.y));
-      addConnection(connections, usedDirections, parentRoomId, branchRoomId, direction);
+      roomCoordinates.set(branchRoomId, placement.coordinate);
+      occupied.add(getCoordinateKey(placement.coordinate.x, placement.coordinate.y));
+      addConnection(connections, usedDirections, parentRoomId, branchRoomId, placement.direction);
       attached = true;
       break;
     }
 
     if (!attached) {
-      const fallbackParent = roomIds[Math.max(0, mainRoomCount - 2)];
-      const parentCoordinate = roomCoordinates.get(fallbackParent)!;
-      const direction = pickUnusedDirection(
-        usedDirections.get(fallbackParent) ?? new Set<Direction>(),
-      );
-      const offset = getDirectionOffset(direction);
-      const coordinate = {
-        x: parentCoordinate.x + offset.x + branchIndex + 1,
-        y: parentCoordinate.y,
-      };
+      for (const fallbackParent of shuffle(roomIds.slice(0, mainRoomCount), rng)) {
+        const parentCoordinate = roomCoordinates.get(fallbackParent);
+        if (!parentCoordinate) {
+          continue;
+        }
 
-      roomCoordinates.set(branchRoomId, coordinate);
-      occupied.add(getCoordinateKey(coordinate.x, coordinate.y));
-      addConnection(connections, usedDirections, fallbackParent, branchRoomId, direction);
+        const placement = findOpenCoordinate(
+          parentCoordinate,
+          listUnusedDirections(usedDirections.get(fallbackParent) ?? new Set<Direction>(), rng),
+          occupied,
+          config.rooms + branchCount + 4,
+        );
+
+        if (!placement) {
+          continue;
+        }
+
+        roomCoordinates.set(branchRoomId, placement.coordinate);
+        occupied.add(getCoordinateKey(placement.coordinate.x, placement.coordinate.y));
+        addConnection(connections, usedDirections, fallbackParent, branchRoomId, placement.direction);
+        attached = true;
+        break;
+      }
+    }
+
+    if (!attached) {
+      throw new Error(`Unable to attach branch room ${branchRoomId}.`);
     }
   }
 

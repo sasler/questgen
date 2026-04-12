@@ -198,9 +198,19 @@ function mockFetchWithTurn(
   return vi
     .fn()
     .mockResolvedValueOnce(makeJsonResponse(state))
-    .mockResolvedValueOnce(
-      makeNdjsonResponse([{ type: "final", result: turnResponse }]),
-    );
+      .mockResolvedValueOnce(
+        makeNdjsonResponse([{ type: "final", result: turnResponse }]),
+      );
+}
+
+function mockFetchWithHint(
+  state: GameState = activeGameState,
+  hint = "Take the toolkit to the relay room before you attempt the final door.",
+) {
+  return vi
+    .fn()
+    .mockResolvedValueOnce(makeJsonResponse(state))
+    .mockResolvedValueOnce(makeJsonResponse({ hint }));
 }
 
 // ── Tests ────────────────────────────────────────────────────────
@@ -445,6 +455,59 @@ describe("Game Page", () => {
     });
 
     expect(global.fetch).toHaveBeenNthCalledWith(2, "/api/game/game-123/intro", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+  });
+
+  it("renders the hidden full map locally without calling the turn route", async () => {
+    const user = userEvent.setup();
+    global.fetch = mockFetchSuccess(activeGameState);
+
+    await act(async () => {
+      render(<GamePage />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Command input")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText("Command input"), "/showfullmap{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByText(/FULL MAP/i)).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/FULL MAP[\s\S]*Library/i)).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls the hint endpoint and renders the returned hint for /hint", async () => {
+    const user = userEvent.setup();
+    global.fetch = mockFetchWithHint();
+
+    await act(async () => {
+      render(<GamePage />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Command input")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText("Command input"), "/hint{Enter}");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Take the toolkit to the relay room before you attempt the final door.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    const hintCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[1];
+    expect(hintCall[0]).toBe("/api/game/game-123/hint");
+    expect(hintCall[1]).toMatchObject({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),

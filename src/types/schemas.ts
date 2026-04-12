@@ -61,6 +61,7 @@ export const PuzzleSolutionSchema = z.object({
   action: z.string(),
   itemIds: z.array(z.string()).optional(),
   npcId: z.string().optional(),
+  description: z.string().optional(),
 });
 
 export const PuzzleRewardSchema = z.object({
@@ -87,6 +88,7 @@ export const LockSchema = z.object({
   mechanism: z.enum(["key", "puzzle", "npc"]),
   keyItemId: z.string().optional(),
   puzzleId: z.string().optional(),
+  conditionDescription: z.string().optional(),
 });
 
 // ── WinCondition ────────────────────────────────────────────────────
@@ -161,6 +163,7 @@ export const GameMetadataSchema = z.object({
   lastPlayedAt: z.number(),
   turnCount: z.number().int().nonnegative(),
   completed: z.boolean(),
+  generationSeed: z.string().optional(),
 });
 
 // ── ProposedAction (discriminated union) ────────────────────────────

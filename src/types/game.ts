@@ -52,6 +52,7 @@ export interface Puzzle {
     action: string;
     itemIds?: string[];
     npcId?: string;
+    description?: string;
   };
   reward: {
     type: "unlock" | "item" | "flag" | "npc_state";
@@ -67,6 +68,7 @@ export interface Lock {
   mechanism: "key" | "puzzle" | "npc";
   keyItemId?: string;
   puzzleId?: string;
+  conditionDescription?: string;
 }
 
 // Win condition
@@ -132,6 +134,7 @@ export interface GameMetadata {
   lastPlayedAt: number;
   turnCount: number;
   completed: boolean;
+  generationSeed?: string;
 }
 
 // Full game state (assembled from split KV storage)

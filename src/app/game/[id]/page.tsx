@@ -11,6 +11,7 @@ import {
   RoomInfoPanel,
 } from "@/components";
 import { getAvailableExits } from "@/engine";
+import { renderEntityTables, renderFullMap } from "@/lib/progression";
 import { loadSettings } from "@/lib/settings";
 import type {
   GameWorld,
@@ -25,7 +26,8 @@ const WELCOME_MESSAGE = `     QUESTGEN - AI TEXT ADVENTURE
 
   Type commands to interact.          
   Try: look, go north, take key,     
-       use key on door, talk to Bob`;
+       use key on door, talk to Bob  
+       /hint`;
 
 interface TurnResult {
   success: boolean;
@@ -214,6 +216,15 @@ export default function GamePage() {
       if (!world || !player || isLoading || gameWon) return;
 
       const turnId = crypto.randomUUID();
+      const appendNarratorEntry = (text: string, suffix: string) => {
+        const narratorEntry: TurnEntry = {
+          turnId: `${turnId}-${suffix}`,
+          role: "narrator",
+          text,
+          timestamp: Date.now(),
+        };
+        setHistory((prev) => [...prev, narratorEntry]);
+      };
 
       // Add player entry to terminal
       const playerEntry: TurnEntry = {
@@ -224,6 +235,62 @@ export default function GamePage() {
       };
       setHistory((prev) => [...prev, playerEntry]);
       setCommandHistory((prev) => [...prev, input]);
+
+      const slashCommand = input.trim().toLowerCase();
+      if (slashCommand.startsWith("/")) {
+        if (slashCommand === "/showfullmap") {
+          appendNarratorEntry(renderFullMap(world, player), "fullmap");
+          return;
+        }
+
+        if (slashCommand === "/showentitytables") {
+          appendNarratorEntry(renderEntityTables(world, player), "entitytables");
+          return;
+        }
+
+        if (slashCommand === "/hint") {
+          setIsLoading(true);
+          setStreamingText("");
+
+          try {
+            const settings = loadSettings();
+            const body: { byokApiKey?: string } = {};
+            if (settings.provider === "byok") {
+              body.byokApiKey = settings.byokApiKey;
+            }
+
+            const res = await fetch(`/api/game/${gameId}/hint`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data.error || "Hint request failed");
+            }
+
+            const data = await res.json();
+            appendNarratorEntry(
+              data.hint ?? "The hint system has misplaced its confidence.",
+              "hint",
+            );
+          } catch (err) {
+            appendNarratorEntry(
+              `[Error: ${err instanceof Error ? err.message : "Hint request failed"}]`,
+              "hint-error",
+            );
+          } finally {
+            setIsLoading(false);
+          }
+
+          return;
+        }
+
+        appendNarratorEntry("Unknown slash command.", "slash-error");
+        return;
+      }
+
       setIsLoading(true);
       setStreamingText("");
 
@@ -304,13 +371,7 @@ export default function GamePage() {
         setStreamingText("");
 
         // Add narrator entry
-        const narratorEntry: TurnEntry = {
-          turnId: `${turnId}-narrator`,
-          role: "narrator",
-          text: finalResult.narrative,
-          timestamp: Date.now(),
-        };
-        setHistory((prev) => [...prev, narratorEntry]);
+        appendNarratorEntry(finalResult.narrative, "narrator");
 
         // Update player state
         setPlayer(finalResult.newPlayerState);
@@ -327,25 +388,17 @@ export default function GamePage() {
         // Check win
         if (finalResult.gameWon) {
           setGameWon(true);
-          const victoryEntry: TurnEntry = {
-            turnId: `${turnId}-victory`,
-            role: "narrator",
-            text: "🎉 VICTORY! Congratulations, you have completed the adventure!",
-            timestamp: Date.now(),
-          };
-          setHistory((prev) => [...prev, victoryEntry]);
+          appendNarratorEntry(
+            "🎉 VICTORY! Congratulations, you have completed the adventure!",
+            "victory",
+          );
         }
       } catch (err) {
         setStreamingText("");
-        const errMsg =
-          err instanceof Error ? err.message : "Something went wrong";
-        const errorEntry: TurnEntry = {
-          turnId: `${turnId}-error`,
-          role: "narrator",
-          text: `[Error: ${errMsg}]`,
-          timestamp: Date.now(),
-        };
-        setHistory((prev) => [...prev, errorEntry]);
+        appendNarratorEntry(
+          `[Error: ${err instanceof Error ? err.message : "Something went wrong"}]`,
+          "error",
+        );
       } finally {
         setIsLoading(false);
       }

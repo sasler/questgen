@@ -369,7 +369,7 @@ describe("processTurn", () => {
     expect(result.error).toContain("conflict");
   });
 
-  it("does not emit streamed narration before turn persistence succeeds", async () => {
+  it("streams narration chunks even if persistence later fails", async () => {
     const storage = createMockStorage({ updatePlayerStateResult: false });
     const provider = createMockProvider([
       aiResponse("You walk north.", [{ type: "move", direction: "north" }]),
@@ -408,7 +408,8 @@ describe("processTurn", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("conflict");
-    expect(onNarrativeChunk).not.toHaveBeenCalled();
+    expect(onNarrativeChunk).toHaveBeenNthCalledWith(1, "You ");
+    expect(onNarrativeChunk).toHaveBeenNthCalledWith(2, "walk north.");
   });
 
   // ── 6. Win condition detected ───────────────────────────────────

@@ -1,4 +1,4 @@
-import type { GameWorld, Connection } from "@/types";
+import type { GameWorld } from "@/types";
 
 export interface ValidationError {
   code: string;
@@ -258,32 +258,41 @@ export function validateWorld(world: GameWorld): ValidationResult {
 
   // ── 5. Duplicate Connection Check ──
   const connKeys = new Set<string>();
+  const edgeKeys = new Set<string>();
   for (const conn of world.connections) {
-    const key = `${conn.fromRoomId}::${conn.direction}`;
-    if (connKeys.has(key)) {
+    const directionalKeys = [
+      {
+        key: `${conn.fromRoomId}::${conn.direction}`,
+        roomId: conn.fromRoomId,
+        direction: conn.direction,
+      },
+      {
+        key: `${conn.toRoomId}::${conn.reverseDirection}`,
+        roomId: conn.toRoomId,
+        direction: conn.reverseDirection,
+      },
+    ];
+
+    for (const directionalKey of directionalKeys) {
+      if (connKeys.has(directionalKey.key)) {
+        push(
+          errors,
+          "DUPLICATE_CONNECTION",
+          `Duplicate connection from "${directionalKey.roomId}" going "${directionalKey.direction}".`,
+          "error",
+          { fromRoomId: directionalKey.roomId, direction: directionalKey.direction },
+        );
+      }
+      connKeys.add(directionalKey.key);
+    }
+
+    const edgeKey = [conn.fromRoomId, conn.toRoomId].sort().join("::");
+    if (edgeKeys.has(edgeKey)) {
       push(
         errors,
         "DUPLICATE_CONNECTION",
-        `Duplicate connection from "${conn.fromRoomId}" going "${conn.direction}".`,
+        `Duplicate corridor recorded between "${conn.fromRoomId}" and "${conn.toRoomId}". Each connection is already bidirectional.`,
         "error",
-        { fromRoomId: conn.fromRoomId, direction: conn.direction },
-      );
-    }
-    connKeys.add(key);
-  }
-
-  // ── 6. Connection Symmetry Warning ──
-  const connSet = new Set(
-    world.connections.map((c) => `${c.fromRoomId}::${c.toRoomId}::${c.direction}`),
-  );
-  for (const conn of world.connections) {
-    const reverseKey = `${conn.toRoomId}::${conn.fromRoomId}::${conn.reverseDirection}`;
-    if (!connSet.has(reverseKey)) {
-      push(
-        warnings,
-        "ASYMMETRIC_CONNECTION",
-        `Connection "${conn.fromRoomId}" → "${conn.toRoomId}" via "${conn.direction}" has no reverse ("${conn.reverseDirection}" back).`,
-        "warning",
         {
           fromRoomId: conn.fromRoomId,
           toRoomId: conn.toRoomId,
@@ -292,9 +301,10 @@ export function validateWorld(world: GameWorld): ValidationResult {
         },
       );
     }
+    edgeKeys.add(edgeKey);
   }
 
-  // ── 4. Key Behind Own Lock ──
+  // ── 6. Key Behind Own Lock ──
   for (const lock of Object.values(world.locks)) {
     if (lock.mechanism !== "key" || !lock.keyItemId) continue;
     if (!world.items[lock.keyItemId]) continue; // already flagged

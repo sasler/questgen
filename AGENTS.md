@@ -36,6 +36,8 @@ npx playwright test   # E2E tests (requires dev server running)
 ## Architecture Principles
 
 - **AI is NOT the game engine** — deterministic code validates all state changes
+- **World topology is deterministic and seeded per game** — room graphs, blockers, and the win path come from code, not free-form AI output
+- **Connections are single bidirectional edges** — one `Connection` already includes `direction` and `reverseDirection`; do not add mirrored reverse duplicates
 - **Local context only** — only current room + neighbors sent to AI per turn
 - **Settings in localStorage** — BYOK keys never sent to server-side storage
 - **Split Redis keys** — world, player, history, settings, metadata stored separately
@@ -45,6 +47,9 @@ npx playwright test   # E2E tests (requires dev server running)
 - **Deployment auth env compatibility** — accept both `GITHUB_ID` / `GITHUB_SECRET` and `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`; docs should prefer the `GITHUB_CLIENT_*` names, and `NEXTAUTH_URL` must point at the QuestGen app URL, not Upstash
 - **Deployment storage envs must be explicit** — Vercel must have both `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`; if either is missing, fail with a clear config error instead of letting Upstash surface a vague `/pipeline` URL parse failure
 - **Vercel Copilot runtime stays binary-first** — preserve the `next.config.ts` `serverExternalPackages` and `outputFileTracingIncludes` entries that trace `@github/copilot-sdk` plus the platform `@github/copilot-<platform>-<arch>` executable; falling back to the JS launcher can fail in serverless runtimes and bloat function size
+- **Hidden tester commands stay hidden in the UI** — `/showfullmap` and `/showentitytables` are repo-documented debug tools, not player-facing affordances
+- **Player hints stay actionable but spoiler-bounded** — `/hint` should point to the next useful step in tone, not dump the whole solution
+- **Copilot SDK text streaming uses delta events** — enable session streaming and forward `assistant.message_delta` chunks immediately; do not buffer them until the end
 
 ## Key Directories
 

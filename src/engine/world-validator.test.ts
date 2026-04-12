@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { validateWorld } from "./world-validator";
-import type { GameWorld, Connection } from "@/types";
+import type { GameWorld } from "@/types";
 
-/** Minimal valid world: 3 rooms connected linearly with a lock, key, puzzle, NPC, item. */
+/** Minimal valid world: 3 rooms connected linearly with single bidirectional edges. */
 function makeValidWorld(): GameWorld {
   return {
     startRoomId: "room-1",
@@ -64,22 +64,9 @@ function makeValidWorld(): GameWorld {
       },
       {
         fromRoomId: "room-2",
-        toRoomId: "room-1",
-        direction: "south",
-        reverseDirection: "north",
-      },
-      {
-        fromRoomId: "room-2",
         toRoomId: "room-3",
         direction: "east",
         reverseDirection: "west",
-        lockId: "lock-1",
-      },
-      {
-        fromRoomId: "room-3",
-        toRoomId: "room-2",
-        direction: "west",
-        reverseDirection: "east",
         lockId: "lock-1",
       },
     ],
@@ -90,7 +77,12 @@ function makeValidWorld(): GameWorld {
         roomId: "room-2",
         description: "Solve the riddle in the book.",
         state: "unsolved",
-        solution: { action: "use", itemIds: ["book-1"], npcId: "npc-1" },
+        solution: {
+          action: "use",
+          itemIds: ["book-1"],
+          npcId: "npc-1",
+          description: "Use the Ancient Book while speaking to the Old Wizard.",
+        },
         reward: { type: "flag", targetId: "riddle-solved" },
       },
     },
@@ -100,6 +92,7 @@ function makeValidWorld(): GameWorld {
         state: "locked",
         mechanism: "key",
         keyItemId: "key-1",
+        conditionDescription: "Unlock this door with the Iron Key.",
       },
     },
     winCondition: {
@@ -379,28 +372,18 @@ describe("validateWorld", () => {
     expect(err!.context?.direction).toBe("north");
   });
 
-  // ──────────────────── ASYMMETRIC_CONNECTION ────────────────────
-  it("warns when a connection has no symmetric reverse", () => {
+  // ──────────────────── DUPLICATE_MIRRORED_CONNECTION ────────────────────
+  it("errors when the reverse corridor is duplicated as a second connection", () => {
     const world = clone(makeValidWorld());
-    // Remove the room-2→room-1 south connection (reverse of room-1→room-2 north)
-    world.connections = world.connections.filter(
-      (c) => !(c.fromRoomId === "room-2" && c.direction === "south"),
-    );
+    world.connections.push({
+      fromRoomId: "room-2",
+      toRoomId: "room-1",
+      direction: "south",
+      reverseDirection: "north",
+    });
     const result = validateWorld(world);
-    const warning = result.warnings.find(
-      (w) => w.code === "ASYMMETRIC_CONNECTION",
-    );
-    expect(warning).toBeDefined();
-    expect(warning!.context?.fromRoomId).toBe("room-1");
-    expect(warning!.context?.toRoomId).toBe("room-2");
-  });
-
-  it("does not warn for symmetric connections", () => {
-    const world = makeValidWorld();
-    const result = validateWorld(world);
-    expect(
-      result.warnings.some((w) => w.code === "ASYMMETRIC_CONNECTION"),
-    ).toBe(false);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.code === "DUPLICATE_CONNECTION")).toBe(true);
   });
 
   // ──────────────────── UNREACHABLE_WIN_CONDITION ────────────────────
@@ -458,15 +441,9 @@ describe("validateWorld", () => {
   });
 
   // ──────────────────── valid=true only when no errors ────────────────────
-  it("valid is true even with warnings if there are no errors", () => {
-    const world = clone(makeValidWorld());
-    // Create asymmetric connection (warning only)
-    world.connections = world.connections.filter(
-      (c) => !(c.fromRoomId === "room-2" && c.direction === "south"),
-    );
-    const result = validateWorld(world);
-    // Should have a warning but still be valid
-    expect(result.warnings.length).toBeGreaterThan(0);
+  it("valid is true when there are no validation errors", () => {
+    const result = validateWorld(makeValidWorld());
+    expect(result.errors).toHaveLength(0);
     expect(result.valid).toBe(true);
   });
 });

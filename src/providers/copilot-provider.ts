@@ -3,7 +3,6 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CopilotClient, approveAll } from "@github/copilot-sdk";
-import type { AssistantMessageEvent } from "@github/copilot-sdk";
 import type {
   IAIProvider,
   AIProviderConfig,
@@ -158,11 +157,13 @@ async function withClient<T>(
 function buildSessionConfig(
   options: AICompletionOptions,
   config: AIProviderConfig,
+  streaming: boolean = false,
 ) {
   const sessionConfig: Parameters<CopilotClient["createSession"]>[0] = {
     model: options.model,
     onPermissionRequest: approveAll,
     systemMessage: { content: options.systemMessage },
+    streaming,
   };
 
   if (config.mode === "byok" && config.byokBaseUrl) {
@@ -209,11 +210,17 @@ export class CopilotProvider implements IAIProvider {
     onChunk: (chunk: string) => void,
   ): Promise<AICompletionResult> {
     return withClient(config, async (client) => {
-      const session = await client.createSession(buildSessionConfig(options, config));
+      const session = await client.createSession(buildSessionConfig(options, config, true));
 
       try {
-        session.on("assistant.message", (event: AssistantMessageEvent) => {
-          onChunk(event.data.content);
+        session.on("assistant.message_delta", (event: { data: { deltaContent?: string } }) => {
+          const delta =
+            "deltaContent" in event.data && typeof event.data.deltaContent === "string"
+              ? event.data.deltaContent
+              : "";
+          if (delta.length > 0) {
+            onChunk(delta);
+          }
         });
 
         const response = await session.sendAndWait({ prompt });

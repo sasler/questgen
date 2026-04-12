@@ -95,7 +95,7 @@ describe("GameLayout", () => {
       </GameLayout>,
     );
     const root = container.firstElementChild as HTMLElement;
-    expect(root.className).toMatch(/md:grid-cols-\[250px_1fr_250px\]/);
+    expect(root.className).toMatch(/md:grid-cols-\[minmax\(0,1fr\)_420px\]/);
   });
 
   it("stacks on mobile (single column by default)", () => {
@@ -138,14 +138,25 @@ describe("GameLayout", () => {
     expect(scanline).toBeInTheDocument();
   });
 
-  it("right sidebar contains both inventory and room info", () => {
+  it("right sidebar contains map, inventory, and room info", () => {
     render(
       <GameLayout {...defaultProps}>
         <div>Content</div>
       </GameLayout>,
     );
     const rightSidebar = screen.getByTestId("right-sidebar");
+    expect(rightSidebar).toContainElement(screen.getByTestId("map"));
     expect(rightSidebar).toContainElement(screen.getByTestId("inventory"));
     expect(rightSidebar).toContainElement(screen.getByTestId("room-info"));
+  });
+
+  it("renders the map in a dedicated scrollable panel", () => {
+    render(
+      <GameLayout {...defaultProps}>
+        <div>Content</div>
+      </GameLayout>,
+    );
+
+    expect(screen.getByTestId("map-panel")).toContainElement(screen.getByTestId("map"));
   });
 });

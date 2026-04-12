@@ -121,7 +121,7 @@ export const GameWorldSchema = z.object({
   rooms: z.record(z.string(), RoomSchema),
   items: z.record(z.string(), ItemSchema),
   npcs: z.record(z.string(), NPCSchema),
-  interactables: z.record(z.string(), InteractableSchema),
+  interactables: z.record(z.string(), InteractableSchema).default({}),
   connections: z.array(ConnectionSchema),
   puzzles: z.record(z.string(), PuzzleSchema),
   locks: z.record(z.string(), LockSchema),

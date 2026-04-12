@@ -205,6 +205,20 @@ describe("GameStorage", () => {
       const result = await storage.getWorld("game1");
       expect(result!.startRoomId).toBe("room2");
     });
+
+    it("defaults missing interactables for legacy worlds", async () => {
+      const legacyWorld = { ...makeWorld() };
+      delete (legacyWorld as Partial<GameWorld>).interactables;
+
+      await redis.set("world:legacy", JSON.stringify(legacyWorld));
+
+      const result = await storage.getWorld("legacy");
+
+      expect(result).toMatchObject({
+        startRoomId: "room1",
+        interactables: {},
+      });
+    });
   });
 
   // ========== Player State ==========

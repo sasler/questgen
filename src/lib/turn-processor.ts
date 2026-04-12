@@ -1,9 +1,13 @@
 import type {
+  Direction,
   GameWorld,
   PlayerState,
   TurnEntry,
   GameSettings,
   AITurnResponse,
+  ProposedAction,
+  Item,
+  Interactable,
 } from "@/types";
 import { AITurnResponseSchema } from "@/types";
 import { applyAction, checkWinCondition, buildLocalContext } from "@/engine";
@@ -59,6 +63,225 @@ function parseAIResponse(raw: string): AITurnResponse | null {
   } catch {
     return null;
   }
+}
+
+const DIRECTION_ALIASES: Record<string, Direction> = {
+  n: "north",
+  north: "north",
+  s: "south",
+  south: "south",
+  e: "east",
+  east: "east",
+  w: "west",
+  west: "west",
+  u: "up",
+  up: "up",
+  d: "down",
+  down: "down",
+};
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function containsNormalizedPhrase(text: string, phrase: string): boolean {
+  return new RegExp(`(?:^| )${escapeRegExp(phrase)}(?:$| )`).test(text);
+}
+
+function buildItemPhrases(item: Item): string[] {
+  const phrases = new Set<string>();
+  const addPhrase = (value?: string) => {
+    const normalized = normalizeText(value ?? "");
+    if (normalized.length > 0) {
+      phrases.add(normalized);
+    }
+  };
+
+  addPhrase(item.id);
+  addPhrase(item.name);
+
+  for (const token of normalizeText(item.name).split(" ")) {
+    if (token.length >= 4) {
+      phrases.add(token);
+    }
+  }
+
+  for (const token of normalizeText(item.id).split(" ")) {
+    if (token.length >= 4) {
+      phrases.add(token);
+    }
+  }
+
+  return [...phrases];
+}
+
+function buildInteractablePhrases(interactable: Interactable): string[] {
+  const phrases = new Set<string>();
+
+  for (const value of [
+    interactable.id,
+    interactable.name,
+    ...interactable.aliases,
+  ]) {
+    const normalized = normalizeText(value);
+    if (normalized.length > 0) {
+      phrases.add(normalized);
+    }
+  }
+
+  for (const token of normalizeText(interactable.name).split(" ")) {
+    if (token.length >= 4) {
+      phrases.add(token);
+    }
+  }
+
+  return [...phrases];
+}
+
+function scorePhraseMatch(
+  input: string,
+  candidatePhrases: string[],
+): number {
+  let bestScore = 0;
+
+  for (const phrase of candidatePhrases) {
+    if (!containsNormalizedPhrase(input, phrase)) {
+      continue;
+    }
+
+    const phraseWordCount = phrase.split(" ").length;
+    const score = phrase.length * 10 + phraseWordCount;
+    if (score > bestScore) {
+      bestScore = score;
+    }
+  }
+
+  return bestScore;
+}
+
+function resolveReferencedItem(
+  fragment: string,
+  world: GameWorld,
+  player: PlayerState,
+): Item | null {
+  const normalizedFragment = normalizeText(fragment);
+  if (!normalizedFragment) {
+    return null;
+  }
+
+  const candidateIds = new Set<string>([
+    ...player.inventory,
+    ...Object.keys(world.items),
+  ]);
+  let bestItem: Item | null = null;
+  let bestScore = 0;
+
+  for (const itemId of candidateIds) {
+    const item = world.items[itemId];
+    if (!item) {
+      continue;
+    }
+
+    const score = scorePhraseMatch(normalizedFragment, buildItemPhrases(item));
+    if (score > bestScore) {
+      bestItem = item;
+      bestScore = score;
+    }
+  }
+
+  return bestItem;
+}
+
+function resolveReferencedInteractable(
+  fragment: string,
+  world: GameWorld,
+  player: PlayerState,
+): Interactable | null {
+  const normalizedFragment = normalizeText(fragment);
+  if (!normalizedFragment) {
+    return null;
+  }
+
+  let bestInteractable: Interactable | null = null;
+  let bestScore = 0;
+
+  for (const interactable of Object.values(world.interactables)) {
+    if (interactable.roomId !== player.currentRoomId) {
+      continue;
+    }
+
+    const score = scorePhraseMatch(
+      normalizedFragment,
+      buildInteractablePhrases(interactable),
+    );
+    if (score > bestScore) {
+      bestInteractable = interactable;
+      bestScore = score;
+    }
+  }
+
+  return bestInteractable;
+}
+
+function resolveDeterministicAction(
+  playerInput: string,
+  world: GameWorld,
+  player: PlayerState,
+): ProposedAction | null {
+  const normalizedInput = normalizeText(playerInput);
+  if (!normalizedInput) {
+    return null;
+  }
+
+  const directionMatch = normalizedInput.match(
+    /^(?:(?:go|move|walk|head|travel|run|step|climb)\s+)?(north|south|east|west|up|down|n|s|e|w|u|d)$/
+  );
+  if (directionMatch) {
+    return {
+      type: "move",
+      direction: DIRECTION_ALIASES[directionMatch[1]],
+    };
+  }
+
+  const itemFirstMatch = normalizedInput.match(
+    /^(?:use|apply|install|place|put|repair|fix|activate|calibrate)\s+(.+?)\s+(?:on|with|to|into)\s+(.+)$/
+  );
+  if (itemFirstMatch) {
+    const item = resolveReferencedItem(itemFirstMatch[1], world, player);
+    const interactable = resolveReferencedInteractable(
+      itemFirstMatch[2],
+      world,
+      player,
+    );
+    if (item && interactable) {
+      return { type: "use_item", itemId: item.id, targetId: interactable.id };
+    }
+  }
+
+  const targetFirstMatch = normalizedInput.match(
+    /^(?:repair|fix|activate|calibrate)\s+(.+?)\s+(?:with|using)\s+(.+)$/
+  );
+  if (targetFirstMatch) {
+    const interactable = resolveReferencedInteractable(
+      targetFirstMatch[1],
+      world,
+      player,
+    );
+    const item = resolveReferencedItem(targetFirstMatch[2], world, player);
+    if (item && interactable) {
+      return { type: "use_item", itemId: item.id, targetId: interactable.id };
+    }
+  }
+
+  return null;
 }
 
 const WORLD_MUTATION_CHANGE_TYPES = new Set([
@@ -150,6 +373,17 @@ function buildValidatedNarrationContext(
     );
   }
 
+  if (localContext.roomInteractables.length > 0) {
+    lines.push(
+      "",
+      "Interactables in room:",
+      ...localContext.roomInteractables.map(
+        (interactable) =>
+          `- ${interactable.name}: ${interactable.description} [state: ${interactable.state}; aliases: ${interactable.aliases.join(", ")}]`,
+      ),
+    );
+  }
+
   if (localContext.activePuzzles.length > 0) {
     lines.push(
       "",
@@ -233,6 +467,11 @@ async function generateValidatedNarrative(
         );
 
     const narrative = completion.content.trim();
+    const parsedNarrative = parseAIResponse(narrative)?.narrative?.trim();
+    if (parsedNarrative && parsedNarrative.length > 0) {
+      return parsedNarrative;
+    }
+
     return narrative.length > 0 ? narrative : deterministicNarrative;
   } catch {
     return deterministicNarrative;
@@ -310,55 +549,70 @@ export async function processTurn(
 
   const localContext = buildLocalContext(world, player, history);
 
-  // ── 3. Build prompt ─────────────────────────────────────────────
+  // ── 3. Resolve obvious deterministic actions first ──────────────
 
-  const prompt = buildTurnPrompt({
+  const deterministicAction = resolveDeterministicAction(
     playerInput,
-    currentRoom: localContext.currentRoom,
-    nearbyRooms: localContext.nearbyRooms,
-    inventory: localContext.inventoryItems,
-    roomItems: localContext.roomItems,
-    roomNPCs: localContext.roomNPCs,
-    activePuzzles: localContext.activePuzzles,
-    recentHistory: localContext.recentHistory,
-    responseLength: settings.responseLength,
-    playerFlags: localContext.playerFlags,
-  });
+    world,
+    player,
+  );
 
-  // ── 4. Call AI ──────────────────────────────────────────────────
+  let proposedActions: ProposedAction[] = [];
 
-  let rawResponse: string;
-  try {
-    const completion = await ai.generateCompletion(
-      prompt,
-      {
-        model: settings.gameplayModel,
-        systemMessage: GAMEPLAY_SYSTEM_PROMPT,
-      },
-      aiConfig,
-    );
-    rawResponse = completion.content;
-  } catch (err) {
-    return errorResult(
-      err instanceof Error ? err.message : "AI provider error",
-      player,
-    );
-  }
+  if (deterministicAction) {
+    proposedActions = [deterministicAction];
+  } else {
+    const prompt = buildTurnPrompt({
+      playerInput,
+      currentRoom: localContext.currentRoom,
+      nearbyRooms: localContext.nearbyRooms,
+      inventory: localContext.inventoryItems,
+      roomItems: localContext.roomItems,
+      roomNPCs: localContext.roomNPCs,
+      roomInteractables: localContext.roomInteractables,
+      activePuzzles: localContext.activePuzzles,
+      recentHistory: localContext.recentHistory,
+      responseLength: settings.responseLength,
+      playerFlags: localContext.playerFlags,
+    });
 
-  // ── 5. Parse AI response ────────────────────────────────────────
+    // ── 4. Call AI when deterministic resolution did not apply ────
 
-  const aiResponse = parseAIResponse(rawResponse);
+    let rawResponse: string;
+    try {
+      const completion = await ai.generateCompletion(
+        prompt,
+        {
+          model: settings.gameplayModel,
+          systemMessage: GAMEPLAY_SYSTEM_PROMPT,
+        },
+        aiConfig,
+      );
+      rawResponse = completion.content;
+    } catch (err) {
+      return errorResult(
+        err instanceof Error ? err.message : "AI provider error",
+        player,
+      );
+    }
 
-  if (!aiResponse) {
-    // Return fallback — no state changes
-    return {
-      success: true,
-      narrative: FALLBACK_NARRATIVE,
-      actionResults: [],
-      newPlayerState: player,
-      worldChanged: false,
-      gameWon: false,
-    };
+    // ── 5. Parse AI response ──────────────────────────────────────
+
+    const aiResponse = parseAIResponse(rawResponse);
+
+    if (!aiResponse) {
+      // Return fallback — no state changes
+      return {
+        success: true,
+        narrative: FALLBACK_NARRATIVE,
+        actionResults: [],
+        newPlayerState: player,
+        worldChanged: false,
+        gameWon: false,
+      };
+    }
+
+    proposedActions = aiResponse.proposedActions;
   }
 
   // ── 6. Validate and apply actions ───────────────────────────────
@@ -366,7 +620,7 @@ export async function processTurn(
   const actionResults: ActionResult[] = [];
   let currentWorld = world;
   let currentPlayer = player;
-  for (const proposedAction of aiResponse.proposedActions) {
+  for (const proposedAction of proposedActions) {
     const { result, world: newWorld, player: newPlayer } = applyAction(
       proposedAction,
       currentWorld,

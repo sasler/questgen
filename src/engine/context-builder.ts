@@ -5,6 +5,7 @@ import type {
   Room,
   Item,
   NPC,
+  Interactable,
   Puzzle,
   Lock,
   Direction,
@@ -21,6 +22,7 @@ export interface LocalContext {
   inventoryItems: Item[];
   roomItems: Item[];
   roomNPCs: NPC[];
+  roomInteractables: Interactable[];
   activePuzzles: Puzzle[];
   relevantLocks: Lock[];
   recentHistory: TurnEntry[];
@@ -47,6 +49,7 @@ export function buildLocalContext(
   const inventoryItems = resolveItems(world, player.inventory);
   const roomItems = resolveItems(world, currentRoom.itemIds);
   const roomNPCs = resolveNPCs(world, currentRoom.npcIds);
+  const roomInteractables = resolveInteractables(world, currentRoom.id);
   const activePuzzles = findActivePuzzles(world, currentRoom.id);
   const relevantLocks = findRelevantLocks(world, player.currentRoomId);
   const recentHistory = history.slice(-historyLimit);
@@ -58,6 +61,7 @@ export function buildLocalContext(
     inventoryItems,
     roomItems,
     roomNPCs,
+    roomInteractables,
     activePuzzles,
     relevantLocks,
     recentHistory,
@@ -123,6 +127,12 @@ function resolveNPCs(world: GameWorld, npcIds: string[]): NPC[] {
     if (npc) npcs.push(npc);
   }
   return npcs;
+}
+
+function resolveInteractables(world: GameWorld, roomId: string): Interactable[] {
+  return Object.values(world.interactables).filter(
+    (interactable) => interactable.roomId === roomId
+  );
 }
 
 function findActivePuzzles(world: GameWorld, roomId: string): Puzzle[] {

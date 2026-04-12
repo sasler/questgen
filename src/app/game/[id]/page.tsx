@@ -436,6 +436,13 @@ export default function GamePage() {
           .filter(Boolean)
       : [];
 
+  const roomInteractables =
+    currentRoom && world
+      ? Object.values(world.interactables).filter(
+          (interactable) => interactable.roomId === currentRoom.id,
+        )
+      : [];
+
   const inventoryItems: Item[] =
     world && player
       ? player.inventory
@@ -499,6 +506,7 @@ export default function GamePage() {
         <RoomInfoPanel
           room={currentRoom}
           items={roomItems}
+          interactables={roomInteractables}
           npcs={roomNPCs}
           exits={exits}
         />

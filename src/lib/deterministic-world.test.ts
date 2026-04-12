@@ -98,4 +98,18 @@ describe("buildDeterministicWorld", () => {
     expect(lock.conditionDescription).toMatch(/\S/);
     expect(world.winCondition.description).toMatch(/\S/);
   });
+
+  it("creates explicit interactable targets for the critical puzzle and lock", () => {
+    const world = buildDeterministicWorld(makeRequest({ size: "small" }), "seed-123");
+    const puzzle = Object.values(world.puzzles)[0];
+    const lock = Object.values(world.locks)[0];
+    const puzzleTarget = world.interactables[puzzle.solution.targetInteractableId!];
+    const lockTarget = world.interactables[lock.targetInteractableId!];
+
+    expect(puzzleTarget).toBeDefined();
+    expect(puzzleTarget.roomId).toBe(puzzle.roomId);
+    expect(puzzleTarget.aliases.length).toBeGreaterThan(0);
+    expect(lockTarget).toBeDefined();
+    expect(lockTarget.aliases.length).toBeGreaterThan(0);
+  });
 });

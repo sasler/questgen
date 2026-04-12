@@ -3,6 +3,7 @@ import type {
   Room,
   Item,
   NPC,
+  Interactable,
   Puzzle,
   TurnEntry,
   GameGenerationRequest,
@@ -18,6 +19,7 @@ export interface TurnPromptParams {
   inventory: Item[];
   roomItems: Item[];
   roomNPCs: NPC[];
+  roomInteractables: Interactable[];
   activePuzzles: Puzzle[];
   recentHistory: TurnEntry[];
   responseLength: "brief" | "moderate" | "detailed";
@@ -85,6 +87,7 @@ export function buildTurnPrompt(params: TurnPromptParams): string {
     inventory,
     roomItems,
     roomNPCs,
+    roomInteractables,
     activePuzzles,
     recentHistory,
     responseLength,
@@ -128,6 +131,17 @@ export function buildTurnPrompt(params: TurnPromptParams): string {
       "",
       `## NPCs Present`,
       ...roomNPCs.map((n) => `- ${n.name} (${n.id}): ${n.description} [state: ${n.state}]`),
+    );
+  }
+
+  if (roomInteractables.length > 0) {
+    sections.push(
+      "",
+      `## Interactables in Room`,
+      ...roomInteractables.map(
+        (interactable) =>
+          `- ${interactable.name} (${interactable.id}): ${interactable.description} [state: ${interactable.state}; aliases: ${interactable.aliases.join(", ")}]`,
+      ),
     );
   }
 

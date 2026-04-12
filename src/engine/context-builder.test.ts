@@ -7,6 +7,7 @@ import type {
   Room,
   Item,
   NPC,
+  Interactable,
   Connection,
   Puzzle,
   Lock,
@@ -101,6 +102,18 @@ function makeTestWorld(): GameWorld {
     },
   };
 
+  const interactables: Record<string, Interactable> = {
+    bookshelf: {
+      id: "bookshelf",
+      roomId: "library",
+      name: "Bookshelf",
+      description: "A bookshelf that looks suspiciously like it hides plot-relevant literature.",
+      aliases: ["shelf", "bookcase"],
+      state: "closed",
+      properties: {},
+    },
+  };
+
   const connections: Connection[] = [
     {
       fromRoomId: "entrance",
@@ -175,6 +188,7 @@ function makeTestWorld(): GameWorld {
     rooms,
     items,
     npcs,
+    interactables,
     connections,
     puzzles,
     locks,
@@ -381,6 +395,25 @@ describe("buildLocalContext", () => {
       const ctx = buildLocalContext(world, player, []);
 
       expect(ctx.roomNPCs).toEqual([]);
+    });
+  });
+
+  describe("roomInteractables", () => {
+    it("returns interactables in the current room", () => {
+      const world = makeTestWorld();
+      const player = makePlayer({ currentRoomId: "library" });
+      const ctx = buildLocalContext(world, player, []);
+
+      expect(ctx.roomInteractables).toHaveLength(1);
+      expect(ctx.roomInteractables[0].id).toBe("bookshelf");
+    });
+
+    it("returns an empty array when the room has no interactables", () => {
+      const world = makeTestWorld();
+      const player = makePlayer({ currentRoomId: "entrance" });
+      const ctx = buildLocalContext(world, player, []);
+
+      expect(ctx.roomInteractables).toEqual([]);
     });
   });
 

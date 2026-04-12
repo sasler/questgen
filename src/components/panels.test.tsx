@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { InventoryPanel } from "./InventoryPanel";
 import { RoomInfoPanel } from "./RoomInfoPanel";
-import type { Item, NPC, Room, Direction } from "@/types";
+import type { Item, NPC, Room, Direction, Interactable } from "@/types";
 
 // ---------------------------------------------------------------------------
 // Factories
@@ -38,6 +38,19 @@ function makeNPC(overrides?: Partial<NPC>): NPC {
     description: "A grizzled space captain.",
     dialogue: { greeting: "Ahoy!" },
     state: "idle",
+    ...overrides,
+  };
+}
+
+function makeInteractable(overrides?: Partial<Interactable>): Interactable {
+  return {
+    id: "interactable-1",
+    roomId: "room-1",
+    name: "Relay Console",
+    description: "A control panel with opinions.",
+    aliases: ["console", "relay console"],
+    state: "offline",
+    properties: {},
     ...overrides,
   };
 }
@@ -134,7 +147,7 @@ describe("InventoryPanel", () => {
 
 describe("RoomInfoPanel", () => {
   it("shows the null room state", () => {
-    render(<RoomInfoPanel room={null} items={[]} npcs={[]} exits={[]} />);
+    render(<RoomInfoPanel room={null} items={[]} interactables={[]} npcs={[]} exits={[]} />);
     expect(
       screen.getByText(/you appear to be nowhere/i),
     ).toBeInTheDocument();
@@ -142,14 +155,14 @@ describe("RoomInfoPanel", () => {
 
   it("renders the room name as a header", () => {
     render(
-      <RoomInfoPanel room={makeRoom()} items={[]} npcs={[]} exits={[]} />,
+      <RoomInfoPanel room={makeRoom()} items={[]} interactables={[]} npcs={[]} exits={[]} />,
     );
     expect(screen.getByText("Grand Foyer")).toBeInTheDocument();
   });
 
   it("renders the room description", () => {
     render(
-      <RoomInfoPanel room={makeRoom()} items={[]} npcs={[]} exits={[]} />,
+      <RoomInfoPanel room={makeRoom()} items={[]} interactables={[]} npcs={[]} exits={[]} />,
     );
     expect(
       screen.getByText(/marble floors/i),
@@ -162,7 +175,7 @@ describe("RoomInfoPanel", () => {
       makeItem({ id: "b", name: "old map" }),
     ];
     render(
-      <RoomInfoPanel room={makeRoom()} items={items} npcs={[]} exits={[]} />,
+      <RoomInfoPanel room={makeRoom()} items={items} interactables={[]} npcs={[]} exits={[]} />,
     );
     expect(screen.getByText(/You see:/i)).toBeInTheDocument();
     expect(screen.getByText(/rusty key/)).toBeInTheDocument();
@@ -175,11 +188,37 @@ describe("RoomInfoPanel", () => {
       makeNPC({ id: "b", name: "Robot Butler" }),
     ];
     render(
-      <RoomInfoPanel room={makeRoom()} items={[]} npcs={npcs} exits={[]} />,
+      <RoomInfoPanel room={makeRoom()} items={[]} interactables={[]} npcs={npcs} exits={[]} />,
     );
     expect(screen.getByText(/Present:/i)).toBeInTheDocument();
     expect(screen.getByText(/Captain Zark/)).toBeInTheDocument();
     expect(screen.getByText(/Robot Butler/)).toBeInTheDocument();
+  });
+
+  it("lists interactable room objects with their current state", () => {
+    const interactables = [
+      makeInteractable(),
+      makeInteractable({
+        id: "interactable-2",
+        name: "Blast Door",
+        aliases: ["door"],
+        state: "sealed",
+      }),
+    ];
+    render(
+      <RoomInfoPanel
+        room={makeRoom()}
+        items={[]}
+        interactables={interactables}
+        npcs={[]}
+        exits={[]}
+      />,
+    );
+    expect(screen.getByText(/Objects:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Relay Console/)).toBeInTheDocument();
+    expect(screen.getByText(/\[offline\]/i)).toBeInTheDocument();
+    expect(screen.getByText(/Blast Door/)).toBeInTheDocument();
+    expect(screen.getByText(/\[sealed\]/i)).toBeInTheDocument();
   });
 
   it("shows exits with direction and room name", () => {
@@ -188,7 +227,7 @@ describe("RoomInfoPanel", () => {
       makeExit({ direction: "south", roomName: "Lobby" }),
     ];
     render(
-      <RoomInfoPanel room={makeRoom()} items={[]} npcs={[]} exits={exits} />,
+      <RoomInfoPanel room={makeRoom()} items={[]} interactables={[]} npcs={[]} exits={exits} />,
     );
     expect(screen.getByText(/Exits:/i)).toBeInTheDocument();
     expect(screen.getByText(/north/)).toBeInTheDocument();
@@ -202,7 +241,7 @@ describe("RoomInfoPanel", () => {
       makeExit({ direction: "east", roomName: "Vault", locked: true }),
     ];
     render(
-      <RoomInfoPanel room={makeRoom()} items={[]} npcs={[]} exits={exits} />,
+      <RoomInfoPanel room={makeRoom()} items={[]} interactables={[]} npcs={[]} exits={exits} />,
     );
     expect(screen.getByText(/🔒|LOCKED/)).toBeInTheDocument();
   });
@@ -213,7 +252,7 @@ describe("RoomInfoPanel", () => {
       makeExit({ direction: "down", roomName: "Secret Lair", hidden: true }),
     ];
     render(
-      <RoomInfoPanel room={makeRoom()} items={[]} npcs={[]} exits={exits} />,
+      <RoomInfoPanel room={makeRoom()} items={[]} interactables={[]} npcs={[]} exits={exits} />,
     );
     expect(screen.getByText(/Hallway/)).toBeInTheDocument();
     expect(screen.queryByText(/Secret Lair/)).not.toBeInTheDocument();
@@ -221,14 +260,14 @@ describe("RoomInfoPanel", () => {
 
   it("does not show items section when no items", () => {
     render(
-      <RoomInfoPanel room={makeRoom()} items={[]} npcs={[]} exits={[]} />,
+      <RoomInfoPanel room={makeRoom()} items={[]} interactables={[]} npcs={[]} exits={[]} />,
     );
     expect(screen.queryByText(/You see:/i)).not.toBeInTheDocument();
   });
 
   it("does not show NPCs section when no npcs", () => {
     render(
-      <RoomInfoPanel room={makeRoom()} items={[]} npcs={[]} exits={[]} />,
+      <RoomInfoPanel room={makeRoom()} items={[]} interactables={[]} npcs={[]} exits={[]} />,
     );
     expect(screen.queryByText(/Present:/i)).not.toBeInTheDocument();
   });

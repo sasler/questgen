@@ -55,6 +55,7 @@ function makeValidWorld(): GameWorld {
         state: "idle",
       },
     },
+    interactables: {},
     connections: [
       {
         fromRoomId: "room-1",

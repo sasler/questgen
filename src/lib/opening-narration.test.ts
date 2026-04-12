@@ -44,6 +44,7 @@ function createWorld(): GameWorld {
         state: "idle",
       },
     },
+    interactables: {},
     connections: [
       {
         fromRoomId: "room1",

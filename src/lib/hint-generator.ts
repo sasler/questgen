@@ -4,7 +4,7 @@ import type { AIProviderConfig, IAIProvider } from "@/providers/types";
 import { GameStorage } from "@/lib/storage";
 import type { IGameStorage } from "@/lib/storage";
 import type { GameSettings, TurnEntry } from "@/types";
-import { buildHintFallback } from "@/lib/progression";
+import { buildHintFallback, buildRoomInteractableHintLines } from "@/lib/progression";
 
 const HINT_SYSTEM_PROMPT = `You are the in-world hint system for a comedic sci-fi text adventure.
 
@@ -12,6 +12,7 @@ Give actionable help without solving the whole game at once. Keep the tone dry, 
 
 function buildHintPrompt(
   context: ReturnType<typeof buildLocalContext>,
+  roomInteractableLines: string[],
   fallbackHint: string,
   history: TurnEntry[],
 ): string {
@@ -21,6 +22,9 @@ function buildHintPrompt(
     "",
     "## Current room",
     `${context.currentRoom.name}: ${context.currentRoom.description}`,
+    "",
+    "## Room objects",
+    ...(roomInteractableLines.length > 0 ? roomInteractableLines : ["- None"]),
     "",
     "## Visible exits",
     ...(context.nearbyRooms.length > 0
@@ -79,8 +83,9 @@ export async function generateHint(
 
   try {
     const localContext = buildLocalContext(world, player, history);
+    const roomInteractableLines = buildRoomInteractableHintLines(world, player);
     const completion = await ai.generateCompletion(
-      buildHintPrompt(localContext, fallbackHint, history),
+      buildHintPrompt(localContext, roomInteractableLines, fallbackHint, history),
       {
         model: settings.gameplayModel,
         systemMessage: HINT_SYSTEM_PROMPT,

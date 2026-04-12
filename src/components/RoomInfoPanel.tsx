@@ -1,8 +1,9 @@
-import type { Item, NPC, Room, Direction } from "@/types";
+import type { Item, NPC, Room, Direction, Interactable } from "@/types";
 
 interface RoomInfoPanelProps {
   room: Room | null;
   items: Item[];
+  interactables: Interactable[];
   npcs: NPC[];
   exits: Array<{
     direction: Direction;
@@ -12,7 +13,7 @@ interface RoomInfoPanelProps {
   }>;
 }
 
-export function RoomInfoPanel({ room, items, npcs, exits }: RoomInfoPanelProps) {
+export function RoomInfoPanel({ room, items, interactables, npcs, exits }: RoomInfoPanelProps) {
   if (!room) {
     return (
       <div className="bg-gray-950 border border-green-900 rounded p-3 font-mono text-sm text-green-400">
@@ -60,6 +61,22 @@ export function RoomInfoPanel({ room, items, npcs, exits }: RoomInfoPanelProps) 
               <li key={npc.id} className="inline text-green-400 text-xs">
                 {npc.name}
                 {i < npcs.length - 1 && <span className="text-green-800">, </span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Interactables */}
+      {interactables.length > 0 && (
+        <div>
+          <span className="text-amber-400 text-xs font-bold">Objects: </span>
+          <ul className="inline">
+            {interactables.map((interactable, i) => (
+              <li key={interactable.id} className="inline text-green-400 text-xs">
+                {interactable.name}
+                <span className="text-green-700"> [{interactable.state}]</span>
+                {i < interactables.length - 1 && <span className="text-green-800">, </span>}
               </li>
             ))}
           </ul>

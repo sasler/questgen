@@ -3,6 +3,7 @@ import type {
   Direction,
   GameGenerationRequest,
   GameWorld,
+  Interactable,
   Item,
   Lock,
   NPC,
@@ -116,10 +117,18 @@ interface ThemeSpec {
   key: keyof typeof ROOM_NAME_POOLS;
   itemName: string;
   itemDescription: string;
+  puzzleTargetName: string;
+  puzzleTargetDescription: string;
+  puzzleTargetAliases: string[];
+  puzzleTargetInitialState: string;
+  puzzleTargetSolvedState: string;
   puzzleName: string;
   puzzleDescription: string;
   lockName: string;
   lockDescription: string;
+  lockTargetAliases: string[];
+  lockTargetLockedState: string;
+  lockTargetUnlockedState: string;
   npcName: string;
   npcDescription: string;
   goalDescription: string;
@@ -135,12 +144,21 @@ function detectTheme(request: GameGenerationRequest): ThemeSpec {
       itemName: "Maintenance Toolkit",
       itemDescription:
         "A toolkit whose previous owner labelled every wrench as 'probably essential'.",
+      puzzleTargetName: "Relay Console",
+      puzzleTargetDescription:
+        "A navigation relay console waits for repair with the offended dignity of machinery that knows it is the plot.",
+      puzzleTargetAliases: ["relay console", "console", "navigation relay", "relay"],
+      puzzleTargetInitialState: "offline",
+      puzzleTargetSolvedState: "calibrated",
       puzzleName: "Navigation Relay Calibration",
       puzzleDescription:
         "A relay console sulks in the middle of the room, refusing to function until someone applies competence.",
       lockName: "Command Bulkhead",
       lockDescription:
         "A bulkhead blocks the way forward until the ship's navigation relay stops pretending to be decorative.",
+      lockTargetAliases: ["bulkhead", "command bulkhead", "final door", "door"],
+      lockTargetLockedState: "locked",
+      lockTargetUnlockedState: "open",
       npcName: "Quartermaster Bell",
       npcDescription:
         "A quartermaster with the calm expression of someone who has filed too many incident reports.",
@@ -155,12 +173,21 @@ function detectTheme(request: GameGenerationRequest): ThemeSpec {
       itemName: "Calibration Kit",
       itemDescription:
         "A foam-lined case containing enough precision tools to alarm anyone near expensive machinery.",
+      puzzleTargetName: "Control Matrix Terminal",
+      puzzleTargetDescription:
+        "A control matrix terminal blinks with the wounded pride of a machine that was absolutely certain it was configured correctly.",
+      puzzleTargetAliases: ["control matrix", "terminal", "matrix terminal", "console"],
+      puzzleTargetInitialState: "misconfigured",
+      puzzleTargetSolvedState: "recalibrated",
       puzzleName: "Control Matrix Recalibration",
       puzzleDescription:
         "The control matrix insists it is perfectly configured, which is exactly what a misconfigured matrix would say.",
       lockName: "Containment Door",
       lockDescription:
         "The final containment door will only unlock once the control matrix stops making policy decisions.",
+      lockTargetAliases: ["containment door", "door", "final door"],
+      lockTargetLockedState: "locked",
+      lockTargetUnlockedState: "open",
       npcName: "Technician Vale",
       npcDescription:
         "A technician who has survived by never trusting status lights that claim everything is fine.",
@@ -174,12 +201,21 @@ function detectTheme(request: GameGenerationRequest): ThemeSpec {
     itemName: "Field Service Kit",
     itemDescription:
       "A service kit full of practical tools and one mysterious implement no committee can name.",
+    puzzleTargetName: "Transit Core Console",
+    puzzleTargetDescription:
+      "A transit core console is wedged into the room like a monument to optimistic maintenance schedules.",
+    puzzleTargetAliases: ["transit core", "console", "transit console", "core console"],
+    puzzleTargetInitialState: "misaligned",
+    puzzleTargetSolvedState: "aligned",
     puzzleName: "Transit Core Alignment",
     puzzleDescription:
       "The transit core is out of alignment and deeply offended that anyone noticed.",
     lockName: "Operations Seal",
     lockDescription:
       "The last operations seal stays locked until the transit core is properly aligned.",
+    lockTargetAliases: ["operations seal", "seal", "final door", "door"],
+    lockTargetLockedState: "locked",
+    lockTargetUnlockedState: "open",
     npcName: "Administrator Moss",
     npcDescription:
       "An administrator who looks as though they have personally lost arguments with every maintenance form on the station.",
@@ -333,6 +369,7 @@ export function buildDeterministicWorld(
   const rooms: Record<string, Room> = {};
   const items: Record<string, Item> = {};
   const npcs: Record<string, NPC> = {};
+  const interactables: Record<string, Interactable> = {};
   const puzzles: Record<string, Puzzle> = {};
   const locks: Record<string, Lock> = {};
   const connections: Connection[] = [];
@@ -450,7 +487,7 @@ export function buildDeterministicWorld(
     name: theme.itemName,
     description: theme.itemDescription,
     portable: true,
-    usableWith: ["transit-core-puzzle"],
+    usableWith: ["critical-system-target"],
     properties: {
       criticalPath: true,
       seed,
@@ -489,6 +526,34 @@ export function buildDeterministicWorld(
   const penultimateRoomId = roomIds[mainRoomCount - 2];
   const finalLockId = "final-operations-lock";
   const puzzleId = "transit-core-puzzle";
+  const puzzleTargetId = "critical-system-target";
+  const lockTargetId = "final-lock-target";
+
+  interactables[puzzleTargetId] = {
+    id: puzzleTargetId,
+    roomId: puzzleRoomId,
+    name: theme.puzzleTargetName,
+    description: theme.puzzleTargetDescription,
+    aliases: theme.puzzleTargetAliases,
+    state: theme.puzzleTargetInitialState,
+    properties: {
+      criticalPath: true,
+      puzzleId,
+    },
+  };
+
+  interactables[lockTargetId] = {
+    id: lockTargetId,
+    roomId: penultimateRoomId,
+    name: theme.lockName,
+    description: theme.lockDescription,
+    aliases: theme.lockTargetAliases,
+    state: theme.lockTargetLockedState,
+    properties: {
+      criticalPath: true,
+      lockId: finalLockId,
+    },
+  };
 
   puzzles[puzzleId] = {
     id: puzzleId,
@@ -499,7 +564,9 @@ export function buildDeterministicWorld(
     solution: {
       action: "use",
       itemIds: [toolkitId],
-      description: `Use the ${theme.itemName} in ${rooms[puzzleRoomId].name} to restore the system that unlocks the final door.`,
+      targetInteractableId: puzzleTargetId,
+      targetState: theme.puzzleTargetSolvedState,
+      description: `Use the ${theme.itemName} on the ${theme.puzzleTargetName} in ${rooms[puzzleRoomId].name} to restore the system that unlocks the final door.`,
     },
     reward: {
       type: "unlock",
@@ -512,7 +579,9 @@ export function buildDeterministicWorld(
     state: "locked",
     mechanism: "puzzle",
     puzzleId,
-    conditionDescription: `Solve ${theme.puzzleName} to open the ${theme.lockName}.`,
+    targetInteractableId: lockTargetId,
+    unlockedState: theme.lockTargetUnlockedState,
+    conditionDescription: `Solve ${theme.puzzleName} by restoring the ${theme.puzzleTargetName} to open the ${theme.lockName}.`,
   };
 
   const finalConnection = connections.find(
@@ -529,6 +598,7 @@ export function buildDeterministicWorld(
     rooms,
     items,
     npcs,
+    interactables,
     connections,
     puzzles,
     locks,

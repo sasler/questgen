@@ -37,6 +37,57 @@ function findConnection(
   return null;
 }
 
+function applyPuzzleTargetState(
+  puzzle: Pick<GameWorld["puzzles"][string], "solution">,
+  world: GameWorld,
+  stateChanges: StateChange[]
+): void {
+  const interactableId = puzzle.solution.targetInteractableId;
+  const targetState = puzzle.solution.targetState;
+  if (!interactableId || !targetState) {
+    return;
+  }
+
+  const interactable = world.interactables[interactableId];
+  if (!interactable || interactable.state === targetState) {
+    return;
+  }
+
+  const previousState = interactable.state;
+  interactable.state = targetState;
+  stateChanges.push({
+    type: "interactable_state_changed",
+    details: { interactableId, from: previousState, to: targetState },
+  });
+}
+
+function applyLockTargetState(
+  lock: Pick<GameWorld["locks"][string], "id" | "targetInteractableId" | "unlockedState">,
+  world: GameWorld,
+  stateChanges: StateChange[]
+): void {
+  if (!lock.targetInteractableId || !lock.unlockedState) {
+    return;
+  }
+
+  const interactable = world.interactables[lock.targetInteractableId];
+  if (!interactable || interactable.state === lock.unlockedState) {
+    return;
+  }
+
+  const previousState = interactable.state;
+  interactable.state = lock.unlockedState;
+  stateChanges.push({
+    type: "interactable_state_changed",
+    details: {
+      interactableId: lock.targetInteractableId,
+      lockId: lock.id,
+      from: previousState,
+      to: lock.unlockedState,
+    },
+  });
+}
+
 function handleMove(
   action: Extract<ProposedAction, { type: "move" }>,
   world: GameWorld,
@@ -196,6 +247,36 @@ function handleDrop(
   };
 }
 
+function resolveUseItemTarget(
+  item: NonNullable<GameWorld["items"][string]>,
+  targetId: string,
+  world: GameWorld
+): string {
+  if (!item.usableWith?.length || item.usableWith.includes(targetId)) {
+    return targetId;
+  }
+
+  if (!(targetId in world.interactables)) {
+    return targetId;
+  }
+
+  const mappedTargetId = item.usableWith.find((usableTargetId) => {
+    const lock = world.locks[usableTargetId];
+    if (lock?.targetInteractableId === targetId) {
+      return true;
+    }
+
+    const puzzle = world.puzzles[usableTargetId];
+    if (puzzle?.solution.targetInteractableId === targetId) {
+      return true;
+    }
+
+    return false;
+  });
+
+  return mappedTargetId ?? targetId;
+}
+
 function handleUseItem(
   action: Extract<ProposedAction, { type: "use_item" }>,
   world: GameWorld,
@@ -218,11 +299,13 @@ function handleUseItem(
     };
   }
 
+  const effectiveTargetId = resolveUseItemTarget(item, action.targetId, world);
   const targetExists =
-    action.targetId in world.items ||
-    action.targetId in world.npcs ||
-    action.targetId in world.locks ||
-    action.targetId in world.puzzles;
+    effectiveTargetId in world.items ||
+    effectiveTargetId in world.npcs ||
+    effectiveTargetId in world.locks ||
+    effectiveTargetId in world.puzzles ||
+    effectiveTargetId in world.interactables;
 
   if (!targetExists) {
     return {
@@ -232,7 +315,7 @@ function handleUseItem(
     };
   }
 
-  if (!item.usableWith || !item.usableWith.includes(action.targetId)) {
+  if (!item.usableWith || !item.usableWith.includes(effectiveTargetId)) {
     return {
       success: false,
       message: `You can't use the ${item.name} on that.`,
@@ -247,37 +330,83 @@ function handleUseItem(
     },
   ];
 
+  const interactableId = action.targetId in world.interactables
+    ? action.targetId
+    : null;
+  const interactable = interactableId
+    ? world.interactables[interactableId]
+    : undefined;
+  if (interactable && interactable.roomId !== player.currentRoomId) {
+    return {
+      success: false,
+      message: `The ${interactable.name} is not here.`,
+      stateChanges: [],
+    };
+  }
+
   // If the target is a lock, unlock it
-  if (action.targetId in world.locks) {
-    const lock = world.locks[action.targetId];
+  if (effectiveTargetId in world.locks) {
+    const lock = world.locks[effectiveTargetId];
     if (lock.state === "locked") {
       lock.state = "unlocked";
+      applyLockTargetState(lock, world, stateChanges);
       stateChanges.push({
         type: "lock_unlocked",
-        details: { lockId: action.targetId },
+        details: { lockId: effectiveTargetId },
       });
     }
   }
 
   // If the target is a puzzle, solve it
-  if (action.targetId in world.puzzles) {
-    const puzzle = world.puzzles[action.targetId];
+  if (effectiveTargetId in world.puzzles) {
+    const puzzle = world.puzzles[effectiveTargetId];
     if (puzzle.state === "unsolved") {
       puzzle.state = "solved";
+      applyPuzzleTargetState(puzzle, world, stateChanges);
       stateChanges.push({
         type: "puzzle_solved",
-        details: { puzzleId: action.targetId },
+        details: { puzzleId: effectiveTargetId },
       });
       applyPuzzleReward(puzzle, world, player, stateChanges);
+    }
+  }
+
+  if (interactable) {
+    const targetPuzzle = Object.values(world.puzzles).find(
+      (puzzle) =>
+        puzzle.state === "unsolved" &&
+        puzzle.roomId === player.currentRoomId &&
+        puzzle.solution.targetInteractableId === action.targetId &&
+        (
+          !puzzle.solution.itemIds ||
+          puzzle.solution.itemIds.length === 0 ||
+          puzzle.solution.itemIds.includes(action.itemId)
+        )
+    );
+
+    if (targetPuzzle) {
+      targetPuzzle.state = "solved";
+      applyPuzzleTargetState(targetPuzzle, world, stateChanges);
+      stateChanges.push({
+        type: "puzzle_solved",
+        details: { puzzleId: targetPuzzle.id },
+      });
+      applyPuzzleReward(targetPuzzle, world, player, stateChanges);
     }
   }
 
   player.turnCount += 1;
   player.stateVersion += 1;
 
+  const targetName =
+    world.interactables[action.targetId]?.name ??
+    world.items[action.targetId]?.name ??
+    world.npcs[action.targetId]?.name ??
+    action.targetId;
+
   return {
     success: true,
-    message: `You use the ${item.name} on the ${action.targetId}.`,
+    message: `You use the ${item.name} on the ${targetName}.`,
     stateChanges,
   };
 }
@@ -334,6 +463,8 @@ function handleUnlock(
   }
 
   lock.state = "unlocked";
+  const stateChanges: StateChange[] = [];
+  applyLockTargetState(lock, world, stateChanges);
   player.turnCount += 1;
   player.stateVersion += 1;
 
@@ -341,6 +472,7 @@ function handleUnlock(
     success: true,
     message: `You unlock it.`,
     stateChanges: [
+      ...stateChanges,
       {
         type: "lock_unlocked",
         details: { lockId: action.lockId },
@@ -368,6 +500,7 @@ function applyPuzzleReward(
       const lock = world.locks[reward.targetId];
       if (lock && lock.state === "locked") {
         lock.state = "unlocked";
+        applyLockTargetState(lock, world, stateChanges);
         stateChanges.push({
           type: "lock_unlocked",
           details: { lockId: reward.targetId },
@@ -468,6 +601,7 @@ function handleSolvePuzzle(
     },
   ];
 
+  applyPuzzleTargetState(puzzle, world, stateChanges);
   applyPuzzleReward(puzzle, world, player, stateChanges);
 
   player.turnCount += 1;

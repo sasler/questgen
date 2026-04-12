@@ -92,6 +92,7 @@ function makeWorld(): GameWorld {
       },
     },
     npcs: {},
+    interactables: {},
     connections: [],
     puzzles: {},
     locks: {},

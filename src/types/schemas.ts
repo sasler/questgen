@@ -43,6 +43,18 @@ export const NPCSchema = z.object({
   state: z.string(),
 });
 
+// ── Interactable ───────────────────────────────────────────────────────
+
+export const InteractableSchema = z.object({
+  id: z.string(),
+  roomId: z.string(),
+  name: z.string(),
+  description: z.string(),
+  aliases: z.array(z.string()),
+  state: z.string(),
+  properties: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
+});
+
 // ── Connection ──────────────────────────────────────────────────────
 
 export const ConnectionSchema = z.object({
@@ -61,6 +73,8 @@ export const PuzzleSolutionSchema = z.object({
   action: z.string(),
   itemIds: z.array(z.string()).optional(),
   npcId: z.string().optional(),
+  targetInteractableId: z.string().optional(),
+  targetState: z.string().optional(),
   description: z.string().optional(),
 });
 
@@ -88,6 +102,8 @@ export const LockSchema = z.object({
   mechanism: z.enum(["key", "puzzle", "npc"]),
   keyItemId: z.string().optional(),
   puzzleId: z.string().optional(),
+  targetInteractableId: z.string().optional(),
+  unlockedState: z.string().optional(),
   conditionDescription: z.string().optional(),
 });
 
@@ -105,6 +121,7 @@ export const GameWorldSchema = z.object({
   rooms: z.record(z.string(), RoomSchema),
   items: z.record(z.string(), ItemSchema),
   npcs: z.record(z.string(), NPCSchema),
+  interactables: z.record(z.string(), InteractableSchema),
   connections: z.array(ConnectionSchema),
   puzzles: z.record(z.string(), PuzzleSchema),
   locks: z.record(z.string(), LockSchema),
@@ -283,6 +300,7 @@ export type DirectionZ = z.infer<typeof DirectionSchema>;
 export type RoomZ = z.infer<typeof RoomSchema>;
 export type ItemZ = z.infer<typeof ItemSchema>;
 export type NPCZ = z.infer<typeof NPCSchema>;
+export type InteractableZ = z.infer<typeof InteractableSchema>;
 export type ConnectionZ = z.infer<typeof ConnectionSchema>;
 export type PuzzleZ = z.infer<typeof PuzzleSchema>;
 export type LockZ = z.infer<typeof LockSchema>;

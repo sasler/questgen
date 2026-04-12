@@ -4,6 +4,7 @@ import {
   RoomSchema,
   ItemSchema,
   NPCSchema,
+  InteractableSchema,
   ConnectionSchema,
   PuzzleSchema,
   LockSchema,
@@ -55,6 +56,19 @@ function validNPC(overrides = {}) {
   };
 }
 
+function validInteractable(overrides = {}) {
+  return {
+    id: "interactable-1",
+    roomId: "room-1",
+    name: "Relay Console",
+    description: "A repair target with more confidence than uptime.",
+    aliases: ["console", "relay console"],
+    state: "offline",
+    properties: { powered: false },
+    ...overrides,
+  };
+}
+
 function validConnection(overrides = {}) {
   return {
     fromRoomId: "room-1",
@@ -72,7 +86,12 @@ function validPuzzle(overrides = {}) {
     roomId: "room-1",
     description: "A locked chest.",
     state: "unsolved" as const,
-    solution: { action: "use_key", itemIds: ["item-1"] },
+    solution: {
+      action: "use_key",
+      itemIds: ["item-1"],
+      targetInteractableId: "interactable-1",
+      targetState: "online",
+    },
     reward: { type: "item" as const, targetId: "item-2" },
     ...overrides,
   };
@@ -84,6 +103,8 @@ function validLock(overrides = {}) {
     state: "locked" as const,
     mechanism: "key" as const,
     keyItemId: "item-1",
+    targetInteractableId: "interactable-2",
+    unlockedState: "open",
     ...overrides,
   };
 }
@@ -149,6 +170,14 @@ function validGameWorld(overrides = {}) {
     rooms: { "room-1": validRoom(), "room-2": validRoom({ id: "room-2", name: "Forest" }) },
     items: { "item-1": validItem() },
     npcs: { "npc-1": validNPC() },
+    interactables: {
+      "interactable-1": validInteractable(),
+      "interactable-2": validInteractable({
+        id: "interactable-2",
+        name: "Bulkhead Door",
+        aliases: ["door", "bulkhead"],
+      }),
+    },
     connections: [validConnection()],
     puzzles: { "puzzle-1": validPuzzle() },
     locks: { "lock-1": validLock() },
@@ -253,6 +282,17 @@ describe("NPCSchema", () => {
   });
 });
 
+describe("InteractableSchema", () => {
+  it("accepts a valid interactable", () => {
+    expect(InteractableSchema.safeParse(validInteractable()).success).toBe(true);
+  });
+
+  it("rejects interactable missing aliases", () => {
+    const { aliases: _, ...noAliases } = validInteractable();
+    expect(InteractableSchema.safeParse(noAliases).success).toBe(false);
+  });
+});
+
 // ── Connection ──────────────────────────────────────────────────────
 
 describe("ConnectionSchema", () => {
@@ -297,6 +337,10 @@ describe("PuzzleSchema", () => {
     );
     expect(result.success).toBe(true);
   });
+
+  it("accepts puzzle solution with an explicit interactable target", () => {
+    expect(PuzzleSchema.safeParse(validPuzzle()).success).toBe(true);
+  });
 });
 
 // ── Lock ────────────────────────────────────────────────────────────
@@ -315,6 +359,10 @@ describe("LockSchema", () => {
       validLock({ mechanism: "puzzle", puzzleId: "puzzle-1", keyItemId: undefined }),
     );
     expect(result.success).toBe(true);
+  });
+
+  it("accepts lock metadata that points at an explicit interactable", () => {
+    expect(LockSchema.safeParse(validLock()).success).toBe(true);
   });
 });
 

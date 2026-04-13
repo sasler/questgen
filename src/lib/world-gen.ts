@@ -82,7 +82,6 @@ const GeneratedWorldContentSchema = z.object({
 });
 
 type GeneratedWorldContent = z.infer<typeof GeneratedWorldContentSchema>;
-const MAX_GENERATION_ATTEMPTS = 2;
 type GeneratedWorldContentRequest =
   | { content: GeneratedWorldContent; error?: undefined }
   | { content: null; error: string };
@@ -298,6 +297,10 @@ function summarizeValidationIssues(validationErrors: string[]): string {
   return validationErrors.join("; ");
 }
 
+function buildWorldGenerationFailureMessage(...issues: string[]): string {
+  return `AI world content failed validation: ${summarizeValidationIssues(issues)}`;
+}
+
 async function requestGeneratedWorldContent(
   ai: IAIProvider,
   aiConfig: AIProviderConfig,
@@ -385,10 +388,7 @@ async function authorWorldContent(
 
     if (!repairAttempt.content) {
       throw new Error(
-        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues([
-          ...issues,
-          repairAttempt.error,
-        ])}`,
+        buildWorldGenerationFailureMessage(...issues, repairAttempt.error),
       );
     }
 
@@ -398,7 +398,7 @@ async function authorWorldContent(
     );
     if (repairErrors.length > 0) {
       throw new Error(
-        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(repairErrors)}`,
+        buildWorldGenerationFailureMessage(...repairErrors),
       );
     }
 
@@ -425,9 +425,10 @@ async function authorWorldContent(
 
     if (!validationRepairAttempt.content) {
       throw new Error(
-        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(
-          validation.errors.map((error) => error.message),
-        )}; ${validationRepairAttempt.error}`,
+        buildWorldGenerationFailureMessage(
+          ...validation.errors.map((error) => error.message),
+          validationRepairAttempt.error,
+        ),
       );
     }
 
@@ -437,7 +438,7 @@ async function authorWorldContent(
     );
     if (repairErrors.length > 0) {
       throw new Error(
-        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(repairErrors)}`,
+        buildWorldGenerationFailureMessage(...repairErrors),
       );
     }
 
@@ -446,9 +447,9 @@ async function authorWorldContent(
     validation = validateWorld(candidateWorld);
     if (!validation.valid) {
       throw new Error(
-        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(
-          validation.errors.map((error) => error.message),
-        )}`,
+        buildWorldGenerationFailureMessage(
+          ...validation.errors.map((error) => error.message),
+        ),
       );
     }
   }

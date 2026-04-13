@@ -27,25 +27,27 @@ const LOADING_MESSAGES = [
 
 async function readErrorMessage(response: Response): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
+  let text = "";
 
-  if (contentType.includes("application/json")) {
+  try {
+    text = (await response.text()).trim();
+  } catch {
+    // Fall through to the generic message below.
+  }
+
+  if (contentType.includes("application/json") && text.length > 0) {
     try {
-      const data = (await response.json()) as { error?: string };
+      const data = JSON.parse(text) as { error?: string };
       if (typeof data.error === "string" && data.error.trim().length > 0) {
         return data.error;
       }
     } catch {
-      // Fall through to text parsing.
+      // Fall through to returning the raw text below.
     }
   }
 
-  try {
-    const text = (await response.text()).trim();
-    if (text.length > 0) {
-      return text;
-    }
-  } catch {
-    // Fall through to the generic message below.
+  if (text.length > 0) {
+    return text;
   }
 
   return "Generation failed";

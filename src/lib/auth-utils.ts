@@ -44,6 +44,21 @@ function isE2EAuthBypassEnabled(): boolean {
   return process.env.QUESTGEN_E2E_AUTH_BYPASS === "1";
 }
 
+function isLocalE2EBypassRequest(request: Request): boolean {
+  try {
+    const { hostname } = new URL(request.url);
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname === "[::1]" ||
+      hostname.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function buildE2EBypassSession(userId: string): Session {
   return {
     user: {
@@ -58,6 +73,10 @@ function buildE2EBypassSession(userId: string): Session {
 
 export function getE2EBypassSession(request: Request): Session | null {
   if (!isE2EAuthBypassEnabled()) {
+    return null;
+  }
+
+  if (!isLocalE2EBypassRequest(request)) {
     return null;
   }
 

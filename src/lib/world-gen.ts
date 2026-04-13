@@ -369,7 +369,7 @@ async function authorWorldContent(
         request,
         settings,
         scaffoldSummary,
-        reviewAttempt === 0 ? validInitialAttempt : validInitialAttempt,
+        validInitialAttempt,
         reviewIssues,
         "review",
       );

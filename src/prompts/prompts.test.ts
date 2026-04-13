@@ -5,6 +5,7 @@ import {
 } from "./system-prompts";
 import {
   buildWorldGenerationPrompt,
+  buildWorldRepairPrompt,
   buildTurnPrompt,
   buildNarrativePrompt,
 } from "./prompt-builders";
@@ -283,6 +284,23 @@ describe("buildWorldGenerationPrompt", () => {
     expect(prompt).toContain("Structural scaffold");
     expect(prompt).toContain("progression-item-1");
     expect(prompt).toContain("progression-puzzle-1");
+  });
+});
+
+describe("buildWorldRepairPrompt", () => {
+  it("includes the scaffold once and ends with the terminal instruction", () => {
+    const prompt = buildWorldRepairPrompt(
+      makeRequest(),
+      makeSettings(),
+      ["Rooms:", "- room-1", "", "Items:", "- progression-item-1"].join("\n"),
+      '{"rooms":{}}',
+      ['Missing room content for "room-1".'],
+      "repair",
+    );
+
+    expect(prompt.match(/## Structural scaffold/g)).toHaveLength(1);
+    expect(prompt).not.toContain("## Deterministic scaffold");
+    expect(prompt.trim().endsWith("Return ONLY the corrected full JSON object. Do not explain your changes.")).toBe(true);
   });
 });
 

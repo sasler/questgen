@@ -312,6 +312,25 @@ describe("auth-utils", () => {
     vi.unstubAllEnvs();
   });
 
+  it("resolveRequestSession rejects the e2e bypass cookie on non-local hosts", async () => {
+    vi.doMock("./auth", () => ({
+      auth: vi.fn().mockResolvedValue(null),
+    }));
+    vi.stubEnv("QUESTGEN_E2E_AUTH_BYPASS", "1");
+
+    const { resolveRequestSession } = await import("./auth-utils");
+    const request = new Request("https://questgen.example.com/game/test", {
+      headers: {
+        cookie: "questgen-e2e-auth=playwright-user",
+      },
+    });
+
+    const session = await resolveRequestSession(request);
+    expect(session).toBeNull();
+
+    vi.unstubAllEnvs();
+  });
+
   it("resolveRequestSession ignores the e2e bypass cookie when disabled", async () => {
     vi.doMock("./auth", () => ({
       auth: vi.fn().mockResolvedValue(null),

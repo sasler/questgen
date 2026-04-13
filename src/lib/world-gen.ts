@@ -12,6 +12,7 @@ import { buildDeterministicWorld } from "@/lib/deterministic-world";
 import { getAIProvider } from "@/providers";
 import {
   buildWorldGenerationPrompt,
+  buildWorldRepairPrompt,
   WORLD_GENERATION_SYSTEM_PROMPT,
 } from "@/prompts";
 import type { IAIProvider, AIProviderConfig } from "@/providers/types";
@@ -81,6 +82,7 @@ const GeneratedWorldContentSchema = z.object({
 });
 
 type GeneratedWorldContent = z.infer<typeof GeneratedWorldContentSchema>;
+const MAX_GENERATION_ATTEMPTS = 3;
 
 function extractJSON(raw: string): string | null {
   const stripped = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "");
@@ -123,8 +125,12 @@ function buildScaffoldSummary(world: GameWorld): string {
     "",
     "Rooms:",
     ...Object.values(world.rooms).map(
-      (room) =>
-        `- ${room.id}: current placeholder name "${room.name}"; items [${room.itemIds.join(", ") || "none"}]; npcs [${room.npcIds.join(", ") || "none"}]`,
+      (room) => {
+        const startRoomNote = room.id === world.startRoomId
+          ? "; start room requires firstVisitText"
+          : "";
+        return `- ${room.id}: placeholder room slot; items [${room.itemIds.join(", ") || "none"}]; npcs [${room.npcIds.join(", ") || "none"}]${startRoomNote}`;
+      },
     ),
     "",
     "Connections:",
@@ -133,16 +139,16 @@ function buildScaffoldSummary(world: GameWorld): string {
     "Items:",
     ...Object.values(world.items).map(
       (item) =>
-        `- ${item.id}: portable=${item.portable}; usableWith=[${item.usableWith?.join(", ") || "none"}]`,
+        `- ${item.id}: portable=${item.portable}; role=${String(item.properties.role ?? "unspecified")}; usableWith=[${item.usableWith?.join(", ") || "none"}]`,
     ),
     "",
     "NPCs:",
-    ...Object.values(world.npcs).map((npc) => `- ${npc.id}`),
+    ...Object.values(world.npcs).map((npc) => `- ${npc.id}: guide/support slot`),
     "",
     "Interactables:",
     ...Object.values(world.interactables).map(
       (interactable) =>
-        `- ${interactable.id}: room=${interactable.roomId}; state=${interactable.state}`,
+        `- ${interactable.id}: room=${interactable.roomId}; role=${String(interactable.properties.role ?? "unspecified")}; state=${interactable.state}`,
     ),
     "",
     "Puzzles:",
@@ -203,6 +209,10 @@ function validateGeneratedContentAgainstWorld(
   ensureExactRecordKeys("puzzle", content.puzzles, Object.keys(world.puzzles), errors);
   ensureExactRecordKeys("lock", content.locks, Object.keys(world.locks), errors);
 
+  if (!content.rooms[world.startRoomId]?.firstVisitText?.trim()) {
+    errors.push(`Missing room content for "${world.startRoomId}": firstVisitText is required.`);
+  }
+
   return errors;
 }
 
@@ -213,18 +223,13 @@ function applyGeneratedWorldContent(
   const enrichedWorld: GameWorld = structuredClone(world);
 
   for (const [roomId, generatedRoom] of Object.entries(content.rooms)) {
-    const originalFirstVisitText = enrichedWorld.rooms[roomId].firstVisitText;
     enrichedWorld.rooms[roomId] = {
       ...enrichedWorld.rooms[roomId],
       name: generatedRoom.name,
       description: generatedRoom.description,
       ...(generatedRoom.firstVisitText
         ? { firstVisitText: generatedRoom.firstVisitText }
-        : originalFirstVisitText
-          ? {
-              firstVisitText: `You arrive in ${generatedRoom.name}, which immediately suggests that someone with a clipboard lost an argument with practicality.`,
-            }
-          : {}),
+        : {}),
     };
   }
 
@@ -286,6 +291,136 @@ function applyGeneratedWorldContent(
   return enrichedWorld;
 }
 
+function summarizeValidationIssues(validationErrors: string[]): string {
+  return validationErrors.join("; ");
+}
+
+async function requestGeneratedWorldContent(
+  ai: IAIProvider,
+  aiConfig: AIProviderConfig,
+  settings: GameSettings,
+  prompt: string,
+): Promise<GeneratedWorldContent | null> {
+  const completion = await ai.generateCompletion(
+    prompt,
+    {
+      model: settings.generationModel,
+      systemMessage: WORLD_GENERATION_SYSTEM_PROMPT,
+    },
+    aiConfig,
+  );
+
+  return parseGeneratedWorldContent(completion.content);
+}
+
+async function authorWorldContent(
+  ai: IAIProvider,
+  aiConfig: AIProviderConfig,
+  request: GameGenerationRequest,
+  settings: GameSettings,
+  scaffoldWorld: GameWorld,
+): Promise<GeneratedWorldContent> {
+  const scaffoldSummary = buildScaffoldSummary(scaffoldWorld);
+  let issues: string[] = [];
+  let previousAttempt = "";
+
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const initialPrompt =
+      attempt === 0
+        ? buildWorldGenerationPrompt(request, settings, scaffoldSummary)
+        : buildWorldRepairPrompt(
+            request,
+            settings,
+            scaffoldSummary,
+            previousAttempt,
+            issues,
+            "repair",
+          );
+    const initialContent = await requestGeneratedWorldContent(
+      ai,
+      aiConfig,
+      settings,
+      initialPrompt,
+    );
+
+    if (!initialContent) {
+      issues = [
+        "The authored world did not parse as valid JSON matching the required schema.",
+      ];
+      previousAttempt = previousAttempt || "{}";
+      continue;
+    }
+
+    previousAttempt = JSON.stringify(initialContent, null, 2);
+    const contentErrors = validateGeneratedContentAgainstWorld(
+      initialContent,
+      scaffoldWorld,
+    );
+    if (contentErrors.length > 0) {
+      issues = contentErrors;
+      continue;
+    }
+
+    const validInitialAttempt = previousAttempt;
+    let reviewIssues: string[] = [];
+
+    for (let reviewAttempt = 0; reviewAttempt < MAX_GENERATION_ATTEMPTS; reviewAttempt += 1) {
+      const reviewPrompt = buildWorldRepairPrompt(
+        request,
+        settings,
+        scaffoldSummary,
+        validInitialAttempt,
+        reviewIssues,
+        "review",
+      );
+      const reviewedContent = await requestGeneratedWorldContent(
+        ai,
+        aiConfig,
+        settings,
+        reviewPrompt,
+      );
+
+      if (!reviewedContent) {
+        reviewIssues = [
+          "The review pass did not return valid JSON matching the required schema.",
+        ];
+        continue;
+      }
+
+      const reviewedContentErrors = validateGeneratedContentAgainstWorld(
+        reviewedContent,
+        scaffoldWorld,
+      );
+      if (reviewedContentErrors.length > 0) {
+        reviewIssues = reviewedContentErrors;
+        continue;
+      }
+
+      const candidateWorld = applyGeneratedWorldContent(
+        scaffoldWorld,
+        reviewedContent,
+      );
+      const validation = validateWorld(candidateWorld);
+      if (!validation.valid) {
+        reviewIssues = validation.errors.map((error) => error.message);
+        continue;
+      }
+
+      return reviewedContent;
+    }
+
+    issues =
+      reviewIssues.length > 0
+        ? reviewIssues
+        : ["The review pass could not confirm the authored world."];
+    previousAttempt = validInitialAttempt;
+  }
+
+  throw new Error(
+    `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(issues)}`,
+  );
+}
+
 export async function generateWorld(
   request: GameGenerationRequest,
   settings: GameSettings,
@@ -314,39 +449,13 @@ export async function generateWorld(
 
   try {
     world = buildDeterministicWorld(request, generationSeed);
-    const prompt = buildWorldGenerationPrompt(
+    const generatedContent = await authorWorldContent(
+      ai,
+      aiConfig,
       request,
       settings,
-      buildScaffoldSummary(world),
-    );
-    const completion = await ai.generateCompletion(
-      prompt,
-      {
-        model: settings.generationModel,
-        systemMessage: WORLD_GENERATION_SYSTEM_PROMPT,
-      },
-      aiConfig,
-    );
-    const generatedContent = parseGeneratedWorldContent(completion.content);
-
-    if (!generatedContent) {
-      return {
-        success: false,
-        error: "AI world content could not be parsed or validated.",
-      };
-    }
-
-    const contentErrors = validateGeneratedContentAgainstWorld(
-      generatedContent,
       world,
     );
-    if (contentErrors.length > 0) {
-      return {
-        success: false,
-        error: `AI world content failed scaffold validation: ${contentErrors.join("; ")}`,
-      };
-    }
-
     world = applyGeneratedWorldContent(world, generatedContent);
     const validation = validateWorld(world);
 

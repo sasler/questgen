@@ -28,14 +28,14 @@ export interface TurnPromptParams {
 
 // ── Size guidelines ─────────────────────────────────────────────────
 
-const SIZE_GUIDELINES: Record<
+const STRUCTURAL_ROOM_COUNTS: Record<
   GameGenerationRequest["size"],
-  { rooms: string; items: string; npcs: string; puzzles: string }
+  { rooms: number }
 > = {
-  small: { rooms: "5-8", items: "8-12", npcs: "2-4", puzzles: "2-3" },
-  medium: { rooms: "10-15", items: "15-25", npcs: "4-8", puzzles: "4-6" },
-  large: { rooms: "20-30", items: "25-40", npcs: "8-12", puzzles: "6-10" },
-  epic: { rooms: "40+", items: "50+", npcs: "15+", puzzles: "12+" },
+  small: { rooms: 6 },
+  medium: { rooms: 9 },
+  large: { rooms: 14 },
+  epic: { rooms: 20 },
 };
 
 // ── Response length guidance ────────────────────────────────────────
@@ -53,7 +53,7 @@ export function buildWorldGenerationPrompt(
   _settings: GameSettings,
   scaffoldSummary?: string,
 ): string {
-  const guide = SIZE_GUIDELINES[request.size];
+  const guide = STRUCTURAL_ROOM_COUNTS[request.size];
 
   const lines = [
     `Generate a ${request.size} text adventure game world as JSON.`,
@@ -68,16 +68,57 @@ export function buildWorldGenerationPrompt(
   }
 
   lines.push(
-    `## Size Guidelines (${request.size})`,
-    `- Rooms: ${guide.rooms}`,
-    `- Items: ${guide.items}`,
-    `- NPCs: ${guide.npcs}`,
-    `- Puzzles: ${guide.puzzles}`,
+    `## Structural constraints (${request.size})`,
+    `- Room slots in scaffold: ${guide.rooms}`,
+    "- Use exactly the room and entity IDs from the structural scaffold.",
+    "- Do not invent extra rooms, items, NPCs, interactables, puzzles, or locks.",
   );
 
   if (scaffoldSummary && scaffoldSummary.trim().length > 0) {
-    lines.push("", "## Deterministic scaffold", scaffoldSummary.trim());
+    lines.push("", "## Structural scaffold", scaffoldSummary.trim());
   }
+
+  return lines.join("\n");
+}
+
+export function buildWorldRepairPrompt(
+  request: GameGenerationRequest,
+  _settings: GameSettings,
+  scaffoldSummary: string,
+  previousAttempt: string,
+  issues: string[],
+  mode: "repair" | "review",
+): string {
+  const lines = [
+    mode === "repair"
+      ? "Repair the authored world JSON so it fits the structural scaffold exactly."
+      : "Review the authored world JSON for solvability and consistency. If it is already correct, return it unchanged. If not, return a corrected full JSON object.",
+    "",
+    "## Game Description",
+    request.description,
+    "",
+  ];
+
+  if (request.genre) {
+    lines.push("## Genre", request.genre, "");
+  }
+
+  lines.push(
+    "## Structural scaffold",
+    scaffoldSummary.trim(),
+    "",
+    "## Previous authored world JSON",
+    previousAttempt.trim(),
+  );
+
+  if (issues.length > 0) {
+    lines.push("", "## Issues to fix", ...issues.map((issue) => `- ${issue}`));
+  }
+
+  lines.push(
+    "",
+    "Return ONLY the corrected full JSON object. Do not explain your changes.",
+  );
 
   return lines.join("\n");
 }

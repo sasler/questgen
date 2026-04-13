@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { getSessionOwnerIds, sessionOwnsUserId } from "@/lib/auth-utils";
+import { getSessionOwnerIds, resolveRequestSession, sessionOwnsUserId } from "@/lib/auth-utils";
 import { formatStorageError, getStorage } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -8,10 +7,10 @@ export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteContext
 ) {
-  const session = await auth();
+  const session = await resolveRequestSession(request);
   if (!session?.user || getSessionOwnerIds(session).length === 0) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -43,10 +42,10 @@ export async function GET(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: RouteContext
 ) {
-  const session = await auth();
+  const session = await resolveRequestSession(request);
   if (!session?.user || getSessionOwnerIds(session).length === 0) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

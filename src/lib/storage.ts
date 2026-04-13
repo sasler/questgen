@@ -83,6 +83,114 @@ function getRedis(): Redis {
   return redisInstance;
 }
 
+function cloneValue<T>(value: T): T {
+  return structuredClone(value);
+}
+
+class InMemoryGameStorage implements IGameStorage {
+  private worlds = new Map<string, GameWorld>();
+  private players = new Map<string, PlayerState>();
+  private histories = new Map<string, TurnEntry[]>();
+  private settings = new Map<string, GameSettings>();
+  private metadata = new Map<string, GameMetadata>();
+  private userGames = new Map<string, string[]>();
+
+  async saveWorld(gameId: string, world: GameWorld): Promise<void> {
+    this.worlds.set(gameId, cloneValue(world));
+  }
+
+  async getWorld(gameId: string): Promise<GameWorld | null> {
+    const value = this.worlds.get(gameId);
+    return value ? cloneValue(value) : null;
+  }
+
+  async savePlayerState(gameId: string, state: PlayerState): Promise<void> {
+    this.players.set(gameId, cloneValue(state));
+  }
+
+  async getPlayerState(gameId: string): Promise<PlayerState | null> {
+    const value = this.players.get(gameId);
+    return value ? cloneValue(value) : null;
+  }
+
+  async updatePlayerState(
+    gameId: string,
+    state: PlayerState,
+    expectedVersion: number,
+  ): Promise<boolean> {
+    const current = this.players.get(gameId);
+    if (!current || current.stateVersion !== expectedVersion) {
+      return false;
+    }
+
+    this.players.set(gameId, {
+      ...cloneValue(state),
+      stateVersion: expectedVersion + 1,
+    });
+    return true;
+  }
+
+  async appendHistory(gameId: string, entry: TurnEntry): Promise<void> {
+    const history = this.histories.get(gameId) ?? [];
+    this.histories.set(gameId, [cloneValue(entry), ...history].slice(0, HISTORY_CAP));
+  }
+
+  async getHistory(gameId: string, limit?: number): Promise<TurnEntry[]> {
+    const history = this.histories.get(gameId) ?? [];
+    return cloneValue(history.slice(0, limit ?? HISTORY_CAP));
+  }
+
+  async saveSettings(gameId: string, settings: GameSettings): Promise<void> {
+    this.settings.set(gameId, cloneValue(settings));
+  }
+
+  async getSettings(gameId: string): Promise<GameSettings | null> {
+    const value = this.settings.get(gameId);
+    return value ? cloneValue(value) : null;
+  }
+
+  async saveMetadata(gameId: string, metadata: GameMetadata): Promise<void> {
+    this.metadata.set(gameId, cloneValue(metadata));
+  }
+
+  async getMetadata(gameId: string): Promise<GameMetadata | null> {
+    const value = this.metadata.get(gameId);
+    return value ? cloneValue(value) : null;
+  }
+
+  async addGameToUser(userId: string, gameId: string): Promise<void> {
+    this.userGames.set(
+      userId,
+      Array.from(new Set([...(this.userGames.get(userId) ?? []), gameId])),
+    );
+  }
+
+  async removeGameFromUser(userId: string, gameId: string): Promise<void> {
+    const existing = this.userGames.get(userId) ?? [];
+    this.userGames.set(
+      userId,
+      existing.filter((id) => id !== gameId),
+    );
+  }
+
+  async getUserGames(userId: string): Promise<string[]> {
+    return cloneValue(this.userGames.get(userId) ?? []);
+  }
+
+  async deleteGame(gameId: string, userId: string): Promise<void> {
+    this.worlds.delete(gameId);
+    this.players.delete(gameId);
+    this.histories.delete(gameId);
+    this.settings.delete(gameId);
+    this.metadata.delete(gameId);
+    await this.removeGameFromUser(userId, gameId);
+  }
+
+  async gameExists(gameId: string): Promise<boolean> {
+    return this.metadata.has(gameId);
+  }
+}
+
 export class GameStorage implements IGameStorage {
   constructor(private redis: Redis = getRedis()) {}
 
@@ -227,7 +335,10 @@ let storageInstance: IGameStorage | null = null;
 
 export function getStorage(): IGameStorage {
   if (!storageInstance) {
-    storageInstance = new GameStorage();
+    storageInstance =
+      process.env.QUESTGEN_STUB_STORAGE === "1"
+        ? new InMemoryGameStorage()
+        : new GameStorage();
   }
   return storageInstance;
 }

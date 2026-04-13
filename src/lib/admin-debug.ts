@@ -1,7 +1,7 @@
 import { buildLocalContext } from "@/engine";
 import { getAIProvider } from "@/providers";
 import type { AIProviderConfig, IAIProvider } from "@/providers/types";
-import { GameStorage } from "@/lib/storage";
+import { getStorage } from "@/lib/storage";
 import type { IGameStorage } from "@/lib/storage";
 import type { GameSettings } from "@/types";
 
@@ -63,7 +63,7 @@ export async function generateAdminDebugResponse(
   storage?: IGameStorage,
   provider?: IAIProvider,
 ): Promise<string> {
-  const store = storage ?? new GameStorage();
+  const store = storage ?? getStorage();
   const ai = provider ?? getAIProvider();
   const [world, player, history, metadata] = await Promise.all([
     store.getWorld(gameId),

@@ -1,5 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
-import { generateAdminDebugResponse } from "./admin-debug";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameSettings, GameWorld, PlayerState, TurnEntry, GameMetadata } from "@/types";
 import type { AIProviderConfig, IAIProvider } from "@/providers/types";
 import type { IGameStorage } from "@/lib/storage";
@@ -108,7 +107,13 @@ const aiConfig: AIProviderConfig = {
 };
 
 describe("generateAdminDebugResponse", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+  });
+
   it("grounds the admin prompt in full game state instead of player-local context only", async () => {
+    const { generateAdminDebugResponse } = await import("./admin-debug");
     const storage = {
       getWorld: vi.fn().mockResolvedValue(makeWorld()),
       getPlayerState: vi.fn().mockResolvedValue(makePlayer()),
@@ -165,5 +170,57 @@ describe("generateAdminDebugResponse", () => {
     expect(prompt).toContain("## Standard player-turn local context");
     expect(prompt).toContain("Engine Room");
     expect(prompt).toContain("Bridge");
+  });
+
+  it("uses getStorage when no storage override is provided", async () => {
+    const storage = {
+      getWorld: vi.fn().mockResolvedValue(makeWorld()),
+      getPlayerState: vi.fn().mockResolvedValue(makePlayer()),
+      getHistory: vi.fn().mockResolvedValue([]),
+      getMetadata: vi.fn().mockResolvedValue(makeMetadata()),
+      getSettings: vi.fn().mockResolvedValue(settings),
+      updatePlayerState: vi.fn(),
+      saveSettings: vi.fn(),
+      saveWorld: vi.fn(),
+      savePlayerState: vi.fn(),
+      appendHistory: vi.fn(),
+      saveMetadata: vi.fn(),
+      addGameToUser: vi.fn(),
+      removeGameFromUser: vi.fn(),
+      getUserGames: vi.fn(),
+      deleteGame: vi.fn(),
+      gameExists: vi.fn(),
+    } satisfies IGameStorage;
+
+    vi.doMock("@/lib/storage", async () => {
+      const actual = await vi.importActual<typeof import("@/lib/storage")>("@/lib/storage");
+      return {
+        ...actual,
+        getStorage: vi.fn(() => storage),
+      };
+    });
+
+    const provider: IAIProvider = {
+      generateCompletion: vi.fn().mockResolvedValue({
+        content: "All state came from the mocked storage.",
+        model: "gpt-4o",
+      }),
+      streamCompletion: vi.fn(),
+      listModels: vi.fn(),
+    };
+
+    const { generateAdminDebugResponse } = await import("./admin-debug");
+    const answer = await generateAdminDebugResponse(
+      "game-1",
+      "What storage did you use?",
+      aiConfig,
+      settings,
+      undefined,
+      provider,
+    );
+
+    expect(answer).toContain("mocked storage");
+    expect(storage.getWorld).toHaveBeenCalledWith("game-1");
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(1);
   });
 });

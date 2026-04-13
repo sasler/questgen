@@ -327,4 +327,23 @@ describe("auth-utils", () => {
     const session = await resolveRequestSession(request);
     expect(session).toBeNull();
   });
+
+  it("resolveRequestSession ignores malformed e2e bypass cookies", async () => {
+    vi.doMock("./auth", () => ({
+      auth: vi.fn().mockResolvedValue(null),
+    }));
+    vi.stubEnv("QUESTGEN_E2E_AUTH_BYPASS", "1");
+
+    const { resolveRequestSession } = await import("./auth-utils");
+    const request = new Request("http://localhost/game/test", {
+      headers: {
+        cookie: "questgen-e2e-auth=%E0%A4%A",
+      },
+    });
+
+    const session = await resolveRequestSession(request);
+    expect(session?.user?.id).toBe("playwright-user");
+
+    vi.unstubAllEnvs();
+  });
 });

@@ -27,7 +27,15 @@ function readCookieValue(request: Request, name: string): string | null {
     }
 
     const rawValue = rawValueParts.join("=").trim();
-    return rawValue.length > 0 ? decodeURIComponent(rawValue) : null;
+    if (rawValue.length === 0) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(rawValue);
+    } catch {
+      return null;
+    }
   }
 
   return null;

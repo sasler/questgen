@@ -159,10 +159,10 @@ class InMemoryGameStorage implements IGameStorage {
   }
 
   async addGameToUser(userId: string, gameId: string): Promise<void> {
-    const existing = this.userGames.get(userId) ?? [];
-    if (!existing.includes(gameId)) {
-      this.userGames.set(userId, [...existing, gameId]);
-    }
+    this.userGames.set(
+      userId,
+      Array.from(new Set([...(this.userGames.get(userId) ?? []), gameId])),
+    );
   }
 
   async removeGameFromUser(userId: string, gameId: string): Promise<void> {

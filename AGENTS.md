@@ -8,14 +8,19 @@ On this Next.js version, `middleware.ts` is deprecated and `proxy.ts` is the cor
 
 # QuestGen Agent Workflow
 
-## TDD Workflow (mandatory for all tasks)
+## Task Breakdown + TDD Workflow (mandatory for all tasks)
 
-1. **Write a failing test** — only tests that make sense for the functionality
-2. **Implement the task** — make the test pass
-3. **Run ALL tests** — `npx vitest run`. If anything fails, fix it before continuing.
-4. **Code review** — use a subagent of different model for code review
-5. **Address issues** — fix any code review findings, go back to step 3
-6. **Move to next task** — only when all tests pass AND review issues are resolved
+Before touching code, break the work into smaller logical tasks. Complete those tasks one at a time; do not batch unrelated implementation together.
+
+For each logical task:
+
+1. **Write failing tests first** — but only tests that meaningfully verify functionality. Do not add filler tests.
+2. **Implement the task** — make the failing tests pass.
+3. **Run tests and smoke tests** — run the relevant task tests, then run the repo smoke checks: `npx vitest run`, `npm run typecheck`, and `npx next build`. If anything fails, fix it and rerun until all pass.
+4. **Code review** — use a subagent with a different AI model than the one used to generate the code.
+5. **Address review findings carefully** — evaluate each suggestion, fix the valid ones, then go back to step 2 and keep iterating until the review is satisfied and the code is reverified.
+6. **Move to the next task only when the current one is clean** — do not advance until tests, smoke tests, and code review are all green for the current task.
+7. **Repeat until all tasks are complete** — only finish the overall job after every task has gone through the same loop and the final state is verified.
 
 ## Code review models
 
@@ -32,6 +37,12 @@ npm run dev           # Dev server (localhost:3000)
 npx next build        # Production build
 npx playwright test   # E2E tests (requires dev server running)
 ```
+
+## AutoPilot / Fleet Execution
+
+- When asked to implement in AutoPilot or fleet mode, still follow the same logical-task workflow above.
+- Parallelism is for independent tasks or investigations, not for skipping the per-task test -> implement -> smoke test -> review loop.
+- Invoke the `pr-workflow` skill only after every logical task is complete and reverified.
 
 ## Architecture Principles
 

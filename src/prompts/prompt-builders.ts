@@ -51,6 +51,7 @@ const RESPONSE_LENGTH_GUIDANCE: Record<TurnPromptParams["responseLength"], strin
 export function buildWorldGenerationPrompt(
   request: GameGenerationRequest,
   _settings: GameSettings,
+  scaffoldSummary?: string,
 ): string {
   const guide = SIZE_GUIDELINES[request.size];
 
@@ -73,6 +74,10 @@ export function buildWorldGenerationPrompt(
     `- NPCs: ${guide.npcs}`,
     `- Puzzles: ${guide.puzzles}`,
   );
+
+  if (scaffoldSummary && scaffoldSummary.trim().length > 0) {
+    lines.push("", "## Deterministic scaffold", scaffoldSummary.trim());
+  }
 
   return lines.join("\n");
 }

@@ -423,6 +423,16 @@ function buildValidatedNarrationEvent(
   return lines.join("\n");
 }
 
+function hasSuccessfulMovement(
+  actionResults: ActionResult[],
+): boolean {
+  return actionResults.some(
+    (result) =>
+      result.success &&
+      result.stateChanges.some((change) => change.type === "player_moved"),
+  );
+}
+
 async function generateValidatedNarrative(
   ai: IAIProvider,
   aiConfig: AIProviderConfig,
@@ -442,10 +452,18 @@ async function generateValidatedNarrative(
     gameWon,
   );
 
+  if (hasSuccessfulMovement(actionResults)) {
+    return deterministicNarrative;
+  }
+
   try {
     const narrationPrompt = buildNarrativePrompt(
       buildValidatedNarrationContext(currentWorld, currentPlayer, history),
-      buildValidatedNarrationEvent(playerInput, actionResults, gameWon),
+      buildValidatedNarrationEvent(
+        playerInput,
+        actionResults,
+        gameWon,
+      ),
     );
     const completion = onNarrativeChunk
       ? await ai.streamCompletion(
@@ -472,7 +490,11 @@ async function generateValidatedNarrative(
       return parsedNarrative;
     }
 
-    return narrative.length > 0 ? narrative : deterministicNarrative;
+    if (narrative.length > 0) {
+      return narrative;
+    }
+
+    return deterministicNarrative;
   } catch {
     return deterministicNarrative;
   }

@@ -7,6 +7,18 @@ description: Automates the full PR lifecycle after a task is complete. Creates a
 
 Automates the end-of-task PR lifecycle for the QuestGen repository. Invoke this workflow AFTER your main task is complete and all changes are ready to ship.
 
+## Preconditions
+
+Before invoking this skill, the main implementation must already have been completed as smaller logical tasks. For each task, the repo workflow must already have been followed:
+
+1. meaningful failing tests first
+2. implementation
+3. `npx vitest run`, `npm run typecheck`, and `npx next build`
+4. code review with a different-model subagent
+5. fix/retest/re-review until clean
+
+Do not use this PR workflow as a substitute for the task-by-task verification loop.
+
 ## Step 1: Create & Push PR
 
 1. Ensure you have uncommitted changes — if not, abort.
@@ -79,6 +91,7 @@ After each fix is implemented, reply to the corresponding inline PR review comme
 ## Important Notes
 
 - **Invoke this workflow only after the main task is complete.**
+- The main task should already be broken into smaller logical tasks, each completed with tests, smoke tests, and different-model code review before the PR stage begins.
 - Always check for uncommitted changes before starting.
 - If the Copilot review finds no issues, note that the review was clean and finish.
 - If ALL review comments are invalid/skippable, document why each was skipped and finish without code changes.

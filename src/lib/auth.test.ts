@@ -291,4 +291,40 @@ describe("auth-utils", () => {
     expect(response.status).toBe(200);
     expect(handler).toHaveBeenCalledWith(req, mockSession);
   });
+
+  it("resolveRequestSession accepts the e2e bypass cookie when enabled", async () => {
+    vi.doMock("./auth", () => ({
+      auth: vi.fn().mockResolvedValue(null),
+    }));
+    vi.stubEnv("QUESTGEN_E2E_AUTH_BYPASS", "1");
+
+    const { resolveRequestSession } = await import("./auth-utils");
+    const request = new Request("http://localhost/game/test", {
+      headers: {
+        cookie: "questgen-e2e-auth=playwright-user",
+      },
+    });
+
+    const session = await resolveRequestSession(request);
+    expect(session?.user?.id).toBe("playwright-user");
+    expect(session?.user?.email).toBe("playwright-user@e2e.questgen.local");
+
+    vi.unstubAllEnvs();
+  });
+
+  it("resolveRequestSession ignores the e2e bypass cookie when disabled", async () => {
+    vi.doMock("./auth", () => ({
+      auth: vi.fn().mockResolvedValue(null),
+    }));
+
+    const { resolveRequestSession } = await import("./auth-utils");
+    const request = new Request("http://localhost/game/test", {
+      headers: {
+        cookie: "questgen-e2e-auth=playwright-user",
+      },
+    });
+
+    const session = await resolveRequestSession(request);
+    expect(session).toBeNull();
+  });
 });

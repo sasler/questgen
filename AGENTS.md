@@ -19,8 +19,9 @@ For each logical task:
 3. **Run tests and smoke tests** — run the relevant task tests, then run the repo smoke checks: `npx vitest run`, `npm run typecheck`, and `npx next build`. If anything fails, fix it and rerun until all pass.
 4. **Code review** — use a subagent with a different AI model than the one used to generate the code.
 5. **Address review findings carefully** — evaluate each suggestion, fix the valid ones, then go back to step 2 and keep iterating until the review is satisfied and the code is reverified.
-6. **Move to the next task only when the current one is clean** — do not advance until tests, smoke tests, and code review are all green for the current task.
-7. **Repeat until all tasks are complete** — only finish the overall job after every task has gone through the same loop and the final state is verified.
+6. **Update docs when behavior changes** — if the task adds or changes commands, workflows, features, or other user/admin-visible behavior, update the relevant docs in the same task before moving on.
+7. **Move to the next task only when the current one is clean** — do not advance until tests, smoke tests, docs, and code review are all green for the current task.
+8. **Repeat until all tasks are complete** — only finish the overall job after every task has gone through the same loop and the final state is verified.
 
 ## Code review models
 

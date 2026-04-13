@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { getSessionOwnerIds, sessionOwnsUserId } from "@/lib/auth-utils";
+import { getSessionOwnerIds, resolveRequestSession, sessionOwnsUserId } from "@/lib/auth-utils";
 import { generateAdminDebugResponse } from "@/lib/admin-debug";
 import { formatStorageError, getStorage } from "@/lib/storage";
 import type { AIProviderConfig } from "@/providers/types";
@@ -12,7 +11,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
+  const session = await resolveRequestSession(request);
   if (!session?.user || getSessionOwnerIds(session).length === 0) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

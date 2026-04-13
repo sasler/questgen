@@ -50,14 +50,17 @@ function createMockStorage(): IGameStorage {
   };
 }
 
-function createMockProvider(response: string): IAIProvider {
+function createMockProvider(response: string | string[]): IAIProvider {
+  const queuedResponses = Array.isArray(response) ? [...response] : [response];
+  const fallbackResponse = queuedResponses.at(-1) ?? "";
+
   return {
     generateCompletion: vi.fn(async () => ({
-      content: response,
+      content: queuedResponses.shift() ?? fallbackResponse,
       model: "gpt-4o",
     })),
     streamCompletion: vi.fn(async () => ({
-      content: response,
+      content: fallbackResponse,
       model: "gpt-4o",
     })),
     listModels: vi.fn(async () => []),
@@ -78,13 +81,17 @@ function getRoomCount(size: GameGenerationRequest["size"]): number {
 }
 
 function buildGeneratedContent(size: GameGenerationRequest["size"]): string {
-  const roomCount = getRoomCount(size);
+  const scaffold = deterministicWorldModule.buildDeterministicWorld(
+    makeRequest({ size }),
+    "fixture-seed",
+  );
+
   const rooms = Object.fromEntries(
-    Array.from({ length: roomCount }, (_, index) => [
-      `room-${index + 1}`,
+    Object.keys(scaffold.rooms).map((roomId, index) => [
+      roomId,
       {
         name: `Generated Room ${index + 1}`,
-        description: `Generated description for room ${index + 1}.`,
+        description: `Generated description for ${roomId}.`,
         ...(index === 0
           ? { firstVisitText: "A generated opening scene with suspicious confidence." }
           : {}),
@@ -92,55 +99,69 @@ function buildGeneratedContent(size: GameGenerationRequest["size"]): string {
     ]),
   );
 
-  return JSON.stringify({
-    rooms,
-    items: {
-      "field-service-kit": {
-        name: "Generated Service Kit",
-        description: "A generated toolkit that allegedly improves outcomes.",
+  const items = Object.fromEntries(
+    Object.keys(scaffold.items).map((itemId, index) => [
+      itemId,
+      {
+        name: `Generated Item ${index + 1}`,
+        description: `Generated description for ${itemId}.`,
       },
-      "incident-memo": {
-        name: "Generated Incident Memo",
-        description: "A generated memo documenting procedural regret.",
-      },
-    },
-    npcs: {
-      "resident-bureaucrat": {
-        name: "Generated Bureaucrat",
-        description: "A generated administrator with impeccable timing and poor luck.",
+    ]),
+  );
+
+  const npcs = Object.fromEntries(
+    Object.keys(scaffold.npcs).map((npcId, index) => [
+      npcId,
+      {
+        name: `Generated NPC ${index + 1}`,
+        description: `Generated description for ${npcId}.`,
         dialogue: {
-          greeting: "Please take a number; causality is running slightly behind schedule.",
+          greeting: `Generated greeting ${index + 1}.`,
         },
       },
-    },
-    interactables: {
-      "critical-system-target": {
-        name: "Generated Relay",
-        description: "A generated relay with measurable contempt for maintenance.",
-        aliases: ["relay", "generated relay"],
+    ]),
+  );
+
+  const interactables = Object.fromEntries(
+    Object.keys(scaffold.interactables).map((interactableId, index) => [
+      interactableId,
+      {
+        name: `Generated Interactable ${index + 1}`,
+        description: `Generated description for ${interactableId}.`,
+        aliases: [`generated interactable ${index + 1}`, interactableId],
       },
-      "final-lock-target": {
-        name: "Generated Final Door",
-        description: "A generated final door with ceremonial hostility.",
-        aliases: ["door", "final door"],
+    ]),
+  );
+
+  const puzzles = Object.fromEntries(
+    Object.keys(scaffold.puzzles).map((puzzleId, index) => [
+      puzzleId,
+      {
+        name: `Generated Puzzle ${index + 1}`,
+        description: `Generated description for ${puzzleId}.`,
+        solutionDescription: `Generated solution instructions for ${puzzleId}.`,
       },
-    },
-    puzzles: {
-      "transit-core-puzzle": {
-        name: "Generated System Audit",
-        description: "A generated systems puzzle with predictable paperwork.",
-        solutionDescription:
-          "Use the Generated Service Kit on the Generated Relay to restore progress.",
+    ]),
+  );
+
+  const locks = Object.fromEntries(
+    Object.keys(scaffold.locks).map((lockId) => [
+      lockId,
+      {
+        conditionDescription: `Generated lock condition for ${lockId}.`,
       },
-    },
-    locks: {
-      "final-operations-lock": {
-        conditionDescription:
-          "Stabilize the Generated Relay before the Generated Final Door will cooperate.",
-      },
-    },
+    ]),
+  );
+
+  return JSON.stringify({
+    rooms,
+    items,
+    npcs,
+    interactables,
+    puzzles,
+    locks,
     winCondition: {
-      description: "Reach the final generated room once the generated door opens.",
+      description: "Reach the final generated room once the generated gate opens.",
     },
   });
 }
@@ -212,7 +233,7 @@ describe("generateWorld", () => {
     expect(savedMeta.generationSeed).not.toHaveLength(0);
   });
 
-  it("uses the generation model to enrich deterministic world content with AI-authored entities", async () => {
+  it("uses the generation model to enrich the structural scaffold with AI-authored entities", async () => {
     const provider = createMockProvider(
       JSON.stringify({
         rooms: {
@@ -244,17 +265,17 @@ describe("generateWorld", () => {
           },
         },
         items: {
-          "field-service-kit": {
+          "progression-item-1": {
             name: "Quantum Maintenance Satchel",
             description: "A satchel full of tools and one implement that denies all accountability.",
           },
-          "incident-memo": {
+          "lore-item-1": {
             name: "Escalation Memo",
             description: "A memo documenting why the emergency was filed under 'later'.",
           },
         },
         npcs: {
-          "resident-bureaucrat": {
+          "guide-npc-1": {
             name: "Clerk Thimble",
             description: "A clerk who radiates the patient despair of processed paperwork.",
             dialogue: {
@@ -264,19 +285,19 @@ describe("generateWorld", () => {
           },
         },
         interactables: {
-          "critical-system-target": {
+          "puzzle-target-1": {
             name: "Probability Relay",
             description: "A relay array blinking with offended statistics.",
             aliases: ["relay", "probability relay", "array"],
           },
-          "final-lock-target": {
+          "final-gate-target-1": {
             name: "Executive Seal",
             description: "A final seal guarding operations with ceremonial bitterness.",
             aliases: ["seal", "executive seal", "door"],
           },
         },
         puzzles: {
-          "transit-core-puzzle": {
+          "progression-puzzle-1": {
             name: "Relay Probability Audit",
             description: "The relay must be audited with tools before reality signs off on progress.",
             solutionDescription:
@@ -284,7 +305,7 @@ describe("generateWorld", () => {
           },
         },
         locks: {
-          "final-operations-lock": {
+          "final-gate-lock-1": {
             description: "The executive seal remains shut until the relay stops improvising.",
             conditionDescription:
               "Stabilize the Probability Relay to open the Executive Seal.",
@@ -309,19 +330,141 @@ describe("generateWorld", () => {
 
     const savedWorld = (storage.saveWorld as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(savedWorld.rooms["room-1"].name).toBe("Reception Loop");
-    expect(savedWorld.items["field-service-kit"].name).toBe("Quantum Maintenance Satchel");
-    expect(savedWorld.npcs["resident-bureaucrat"].name).toBe("Clerk Thimble");
-    expect(savedWorld.interactables["critical-system-target"].name).toBe("Probability Relay");
-    expect(savedWorld.puzzles["transit-core-puzzle"].name).toBe("Relay Probability Audit");
-    expect(savedWorld.locks["final-operations-lock"].conditionDescription).toContain(
+    expect(savedWorld.items["progression-item-1"].name).toBe("Quantum Maintenance Satchel");
+    expect(savedWorld.npcs["guide-npc-1"].name).toBe("Clerk Thimble");
+    expect(savedWorld.interactables["puzzle-target-1"].name).toBe("Probability Relay");
+    expect(savedWorld.puzzles["progression-puzzle-1"].name).toBe("Relay Probability Audit");
+    expect(savedWorld.locks["final-gate-lock-1"].conditionDescription).toContain(
       "Probability Relay",
     );
 
-    expect(provider.generateCompletion).toHaveBeenCalledTimes(1);
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
     const promptCall = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock
       .calls[0] as [string, AICompletionOptions];
-    expect(promptCall[0]).toContain("Deterministic scaffold");
+    expect(promptCall[0]).toContain("Structural scaffold");
     expect(promptCall[1].model).toBe(settings.generationModel);
+
+    const reviewPrompt = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(reviewPrompt).toContain("Review the authored world");
+  });
+
+  it("retries with a repair prompt when the first AI-authored world fails scaffold validation", async () => {
+    const provider = createMockProvider([
+      JSON.stringify({
+        rooms: {
+          "room-1": {
+            name: "Only One Room",
+            description: "This draft is incomplete.",
+          },
+        },
+        items: {},
+        npcs: {},
+        interactables: {},
+        puzzles: {},
+        locks: {},
+        winCondition: {
+          description: "Still incomplete.",
+        },
+      }),
+      buildGeneratedContent(request.size),
+    ]);
+
+    const result = await generateWorld(
+      request,
+      settings,
+      "user-1",
+      { mode: "copilot", githubToken: "test-token" },
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(3);
+
+    const repairPrompt = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock.calls[1][0];
+    expect(repairPrompt).toContain("Repair the authored world");
+    expect(repairPrompt).toContain("Missing room content");
+  });
+
+  it("retries a broken review within the same generation attempt", async () => {
+    const validDraft = buildGeneratedContent(request.size);
+    const brokenReview = JSON.stringify({
+      rooms: {
+        "room-1": {
+          name: "Broken Review Room",
+          description: "This review draft threw away most of the scaffold.",
+        },
+      },
+      items: {},
+      npcs: {},
+      interactables: {},
+      puzzles: {},
+      locks: {},
+      winCondition: {
+        description: "Still broken.",
+      },
+    });
+    const provider = createMockProvider([
+      validDraft,
+      brokenReview,
+      validDraft,
+    ]);
+
+    const result = await generateWorld(
+      request,
+      settings,
+      "user-1",
+      { mode: "copilot", githubToken: "test-token" },
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(3);
+    expect(
+      (provider.generateCompletion as ReturnType<typeof vi.fn>).mock.calls[2][0],
+    ).toContain("Review the authored world");
+  });
+
+  it("keeps repair prompts anchored to the last structurally valid authored draft", async () => {
+    const validDraft = buildGeneratedContent(request.size);
+    const brokenReview = JSON.stringify({
+      rooms: {
+        "room-1": {
+          name: "Broken Review Room",
+          description: "This review draft threw away most of the scaffold.",
+        },
+      },
+      items: {},
+      npcs: {},
+      interactables: {},
+      puzzles: {},
+      locks: {},
+      winCondition: {
+        description: "Still broken.",
+      },
+    });
+    const provider = createMockProvider([
+      validDraft,
+      brokenReview,
+      validDraft,
+      validDraft,
+    ]);
+
+    const result = await generateWorld(
+      request,
+      settings,
+      "user-1",
+      { mode: "copilot", githubToken: "test-token" },
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+
+    const repairPrompt = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock.calls[2][0];
+    expect(repairPrompt).toContain("Generated Room 1");
+    expect(repairPrompt).not.toContain("Broken Review Room");
   });
 
   it("fails generation when AI content does not satisfy the deterministic scaffold", async () => {
@@ -373,7 +516,7 @@ describe("generateWorld", () => {
     expect(result.error).toContain("AI world content");
   });
 
-  it("regenerates the start room first-visit text when AI renames the room without providing replacement intro text", async () => {
+  it("repairs missing start-room first-visit text instead of falling back to a hardcoded template", async () => {
     const generatedContent = JSON.parse(buildGeneratedContent(request.size)) as {
       rooms: Record<string, { name: string; description: string; firstVisitText?: string }>;
     };
@@ -381,7 +524,10 @@ describe("generateWorld", () => {
       name: "New Arrival Hall",
       description: "A newly named arrival hall with administrative overconfidence.",
     };
-    const provider = createMockProvider(JSON.stringify(generatedContent));
+    const provider = createMockProvider([
+      JSON.stringify(generatedContent),
+      buildGeneratedContent(request.size),
+    ]);
 
     const result = await generateWorld(
       request,
@@ -395,8 +541,12 @@ describe("generateWorld", () => {
     expect(result.success).toBe(true);
 
     const savedWorld = (storage.saveWorld as ReturnType<typeof vi.fn>).mock.calls[0][1];
-    expect(savedWorld.rooms["room-1"].name).toBe("New Arrival Hall");
-    expect(savedWorld.rooms["room-1"].firstVisitText).toContain("New Arrival Hall");
+    expect(savedWorld.rooms["room-1"].firstVisitText).toContain(
+      "A generated opening scene with suspicious confidence.",
+    );
+    expect(savedWorld.rooms["room-1"].firstVisitText).not.toContain(
+      "clipboard lost an argument",
+    );
   });
 
   it("stores correct initial player state", async () => {

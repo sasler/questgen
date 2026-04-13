@@ -6,6 +6,21 @@ import type {
   IAIProvider,
 } from "./types";
 
+const DIRECTION_ALIASES: Record<string, string> = {
+  n: "north",
+  north: "north",
+  s: "south",
+  south: "south",
+  e: "east",
+  east: "east",
+  w: "west",
+  west: "west",
+  u: "up",
+  up: "up",
+  d: "down",
+  down: "down",
+};
+
 function extractSection(prompt: string, heading: string): string {
   const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = prompt.match(
@@ -172,7 +187,7 @@ function buildGameplayResponse(prompt: string): string {
   const playerInput = extractPlayerInput(prompt);
 
   if (/^(go |move |walk |head |travel |run |step |climb )?(north|south|east|west|up|down|n|s|e|w|u|d)$/.test(playerInput)) {
-    const direction = playerInput.split(" ").at(-1);
+    const direction = DIRECTION_ALIASES[playerInput.split(" ").at(-1) ?? ""];
     return JSON.stringify({
       narrative: `You move ${direction}.`,
       proposedActions: [{ type: "move", direction }],

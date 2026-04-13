@@ -333,6 +333,7 @@ describe("auth-utils", () => {
       auth: vi.fn().mockResolvedValue(null),
     }));
     vi.stubEnv("QUESTGEN_E2E_AUTH_BYPASS", "1");
+    vi.stubEnv("QUESTGEN_E2E_AUTH_USER_ID", "playwright-user");
 
     const { resolveRequestSession } = await import("./auth-utils");
     const request = new Request("http://localhost/game/test", {

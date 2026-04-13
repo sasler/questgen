@@ -30,6 +30,7 @@ export default defineConfig({
       NEXTAUTH_URL: "http://localhost:3100",
       AUTH_TRUST_HOST: "true",
       QUESTGEN_E2E_AUTH_BYPASS: "1",
+      QUESTGEN_E2E_AUTH_USER_ID: "playwright-user",
       QUESTGEN_STUB_AI: "1",
       QUESTGEN_STUB_STORAGE: "1",
     },

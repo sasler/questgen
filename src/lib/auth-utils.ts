@@ -4,7 +4,6 @@ import type { Session } from "next-auth";
 
 type SessionWithUser = Pick<Session, "user">;
 const E2E_AUTH_COOKIE = "questgen-e2e-auth";
-const E2E_DEFAULT_USER_ID = "playwright-user";
 
 function readCookieValue(request: Request, name: string): string | null {
   const nextRequest = request as Request & {
@@ -64,8 +63,7 @@ export function getE2EBypassSession(request: Request): Session | null {
 
   const userId =
     readCookieValue(request, E2E_AUTH_COOKIE) ??
-    process.env.QUESTGEN_E2E_AUTH_USER_ID ??
-    E2E_DEFAULT_USER_ID;
+    process.env.QUESTGEN_E2E_AUTH_USER_ID;
   if (!userId) {
     return null;
   }

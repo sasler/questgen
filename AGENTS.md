@@ -14,6 +14,7 @@ Before touching code, break the work into smaller logical tasks. Complete those 
 
 For each logical task:
 
+0. **Check git state first** — before starting the task, run `git fetch --all --prune` and `git status -sb` to confirm the working tree is in the expected state and the current branch is not behind its upstream. If it is behind, pull/rebase and resolve that before writing code.
 1. **Write failing tests first** — but only tests that meaningfully verify functionality. Do not add filler tests.
 2. **Implement the task** — make the failing tests pass.
 3. **Run tests and smoke tests** — run the relevant task tests, then run the repo smoke checks: `npx vitest run`, `npm run typecheck`, and `npx next build`. If anything fails, fix it and rerun until all pass.

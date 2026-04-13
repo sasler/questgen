@@ -246,7 +246,7 @@ describe("processTurn", () => {
 
     const result = await processTurn(
       "game-1",
-      "inspect room",
+      "go north",
       "turn-1",
       defaultAIConfig,
       createTestSettings(),

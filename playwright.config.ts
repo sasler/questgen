@@ -20,7 +20,7 @@ export default defineConfig({
   webServer: {
     command: "npx next dev --port 3100",
     url: "http://localhost:3100",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 120000,
     env: {
       ...process.env,
@@ -29,6 +29,10 @@ export default defineConfig({
       AUTH_SECRET: "playwright-auth-secret",
       NEXTAUTH_URL: "http://localhost:3100",
       AUTH_TRUST_HOST: "true",
+      QUESTGEN_E2E_AUTH_BYPASS: "1",
+      QUESTGEN_E2E_AUTH_USER_ID: "playwright-user",
+      QUESTGEN_STUB_AI: "1",
+      QUESTGEN_STUB_STORAGE: "1",
     },
   },
 });

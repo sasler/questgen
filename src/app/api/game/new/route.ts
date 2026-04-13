@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { getPrimarySessionOwnerId } from "@/lib/auth-utils";
+import { getPrimarySessionOwnerId, resolveRequestSession } from "@/lib/auth-utils";
 import { generateWorld } from "@/lib/world-gen";
 import {
   GameGenerationRequestSchema,
@@ -19,7 +18,7 @@ const RequestBodySchema = z.object({
 });
 
 export async function POST(req: Request): Promise<Response> {
-  const session = await auth();
+  const session = await resolveRequestSession(req);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

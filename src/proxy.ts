@@ -1,4 +1,5 @@
 import { auth, isAuthConfigured } from "@/lib/auth";
+import { getE2EBypassSession } from "@/lib/auth-utils";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
@@ -42,6 +43,10 @@ const configuredProxy = auth((req) => {
 });
 
 export default function proxy(req: NextRequest) {
+  if (getE2EBypassSession(req)) {
+    return NextResponse.next();
+  }
+
   if (!isAuthConfigured()) {
     return unconfiguredProxy(req);
   }

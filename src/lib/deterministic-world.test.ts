@@ -30,6 +30,25 @@ function makeRequest(overrides: Partial<GameGenerationRequest> = {}): GameGenera
 }
 
 describe("buildDeterministicWorld", () => {
+  it("keeps the structural scaffold independent from the story prompt", () => {
+    const first = buildDeterministicWorld(
+      makeRequest({
+        description: "A salvage mission on a bureaucratic orbital station",
+        genre: "science fiction comedy",
+      }),
+      "seed-123",
+    );
+    const second = buildDeterministicWorld(
+      makeRequest({
+        description: "A stranded research crew inside an abandoned reactor labyrinth",
+        genre: "industrial mystery",
+      }),
+      "seed-123",
+    );
+
+    expect(second).toEqual(first);
+  });
+
   it("returns the same world for the same request seed", () => {
     const request = makeRequest();
 
@@ -111,5 +130,23 @@ describe("buildDeterministicWorld", () => {
     expect(puzzleTarget.aliases.length).toBeGreaterThan(0);
     expect(lockTarget).toBeDefined();
     expect(lockTarget.aliases.length).toBeGreaterThan(0);
+  });
+
+  it("uses generic structural slot ids instead of pre-authored theme ids", () => {
+    const world = buildDeterministicWorld(makeRequest({ size: "small" }), "seed-123");
+
+    expect(Object.keys(world.items)).toContain("progression-item-1");
+    expect(Object.keys(world.items)).toContain("lore-item-1");
+    expect(Object.keys(world.npcs)).toContain("guide-npc-1");
+    expect(Object.keys(world.interactables)).toContain("puzzle-target-1");
+    expect(Object.keys(world.interactables)).toContain("final-gate-target-1");
+    expect(Object.keys(world.puzzles)).toContain("progression-puzzle-1");
+    expect(Object.keys(world.locks)).toContain("final-gate-lock-1");
+
+    expect(Object.keys(world.items)).not.toContain("field-service-kit");
+    expect(Object.keys(world.items)).not.toContain("incident-memo");
+    expect(Object.keys(world.npcs)).not.toContain("resident-bureaucrat");
+    expect(Object.keys(world.puzzles)).not.toContain("transit-core-puzzle");
+    expect(Object.keys(world.locks)).not.toContain("final-operations-lock");
   });
 });

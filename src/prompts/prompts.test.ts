@@ -231,27 +231,36 @@ describe("buildWorldGenerationPrompt", () => {
 
   it("includes size-specific room counts for small", () => {
     const prompt = buildWorldGenerationPrompt(makeRequest({ size: "small" }), makeSettings());
-    expect(prompt).toMatch(/5.?-?.?8/);
+    expect(prompt).toContain("Room slots in scaffold: 6");
   });
 
   it("includes size-specific room counts for medium", () => {
     const prompt = buildWorldGenerationPrompt(makeRequest({ size: "medium" }), makeSettings());
-    expect(prompt).toMatch(/10.?-?.?15/);
+    expect(prompt).toContain("Room slots in scaffold: 9");
   });
 
   it("includes size-specific room counts for large", () => {
     const prompt = buildWorldGenerationPrompt(makeRequest({ size: "large" }), makeSettings());
-    expect(prompt).toMatch(/20.?-?.?30/);
+    expect(prompt).toContain("Room slots in scaffold: 14");
   });
 
   it("includes size-specific room counts for epic", () => {
     const prompt = buildWorldGenerationPrompt(makeRequest({ size: "epic" }), makeSettings());
-    expect(prompt).toMatch(/40/);
+    expect(prompt).toContain("Room slots in scaffold: 20");
   });
 
   it("includes the size label", () => {
     const prompt = buildWorldGenerationPrompt(makeRequest({ size: "large" }), makeSettings());
     expect(prompt).toContain("large");
+  });
+
+  it("does not include free-form item, npc, or puzzle count guidance once the scaffold fixes exact records", () => {
+    const prompt = buildWorldGenerationPrompt(makeRequest({ size: "epic" }), makeSettings());
+
+    expect(prompt).not.toContain("Items:");
+    expect(prompt).not.toContain("NPCs:");
+    expect(prompt).not.toContain("Puzzles:");
+    expect(prompt).toContain("Use exactly the room and entity IDs from the structural scaffold");
   });
 
   it("mentions JSON format", () => {
@@ -266,14 +275,14 @@ describe("buildWorldGenerationPrompt", () => {
       [
         "Room IDs: room-1, room-2",
         "Critical slots:",
-        "- item field-service-kit in room-2",
-        "- puzzle transit-core-puzzle in room-2",
+        "- item progression-item-1 in room-2",
+        "- puzzle progression-puzzle-1 in room-2",
       ].join("\n"),
     );
 
-    expect(prompt).toContain("Deterministic scaffold");
-    expect(prompt).toContain("field-service-kit");
-    expect(prompt).toContain("transit-core-puzzle");
+    expect(prompt).toContain("Structural scaffold");
+    expect(prompt).toContain("progression-item-1");
+    expect(prompt).toContain("progression-puzzle-1");
   });
 });
 

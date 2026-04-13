@@ -14,8 +14,9 @@ Before invoking this skill, the main implementation must already have been compl
 1. meaningful failing tests first
 2. implementation
 3. `npx vitest run`, `npm run typecheck`, and `npx next build`
-4. code review with a different-model subagent
-5. fix/retest/re-review until clean
+4. update the relevant docs if behavior, commands, workflows, or user/admin-visible features changed
+5. code review with a different-model subagent
+6. fix/retest/re-review until clean
 
 Do not use this PR workflow as a substitute for the task-by-task verification loop.
 

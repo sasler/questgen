@@ -549,3 +549,19 @@ describe("GameStorage", () => {
     });
   });
 });
+
+describe("getStorage", () => {
+  it("uses in-memory storage when QUESTGEN_STUB_STORAGE is enabled", async () => {
+    vi.stubEnv("QUESTGEN_STUB_STORAGE", "1");
+    vi.resetModules();
+
+    const { getStorage } = await import("./storage");
+    const storage = getStorage();
+    const world = makeWorld();
+
+    await storage.saveWorld("stub-game", world);
+    await expect(storage.getWorld("stub-game")).resolves.toEqual(world);
+
+    vi.unstubAllEnvs();
+  });
+});

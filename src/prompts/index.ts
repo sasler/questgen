@@ -3,5 +3,10 @@ export {
   GAMEPLAY_SYSTEM_PROMPT,
   VALIDATED_NARRATION_SYSTEM_PROMPT,
 } from "./system-prompts";
-export { buildWorldGenerationPrompt, buildTurnPrompt, buildNarrativePrompt } from "./prompt-builders";
+export {
+  buildWorldGenerationPrompt,
+  buildWorldRepairPrompt,
+  buildTurnPrompt,
+  buildNarrativePrompt,
+} from "./prompt-builders";
 export type { TurnPromptParams } from "./prompt-builders";

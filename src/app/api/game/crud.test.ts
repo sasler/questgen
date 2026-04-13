@@ -7,6 +7,14 @@ import type { GameMetadata, GameWorld, PlayerState, TurnEntry, GameSettings } fr
 // ---------------------------------------------------------------------------
 const mockAuth = vi.fn();
 vi.mock("@/lib/auth", () => ({ auth: () => mockAuth() }));
+const mockResolveRequestSession = vi.fn();
+vi.mock("@/lib/auth-utils", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/auth-utils")>("@/lib/auth-utils");
+  return {
+    ...actual,
+    resolveRequestSession: (request: Request) => mockResolveRequestSession(request),
+  };
+});
 
 const mockStorage = {
   getUserGames: vi.fn(),
@@ -106,6 +114,7 @@ function gameParams(id: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetStorage.mockImplementation(() => mockStorage);
+  mockResolveRequestSession.mockImplementation(async () => mockAuth());
 });
 
 describe("GET /api/games", () => {
@@ -189,6 +198,20 @@ describe("GET /api/games", () => {
     await expect(res.json()).resolves.toEqual({
       error: "Storage failed: Missing Upstash Redis configuration",
     });
+  });
+
+  it("accepts the resolved request session path used by e2e bypass", async () => {
+    mockResolveRequestSession.mockResolvedValue({
+      user: { id: "playwright-user", email: "playwright@example.com" },
+      accessToken: "questgen-e2e-access-token",
+    });
+    mockStorage.getUserGames.mockResolvedValue([]);
+
+    const res = await GET(gamesRequest());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.games).toEqual([]);
   });
 });
 

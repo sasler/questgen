@@ -25,6 +25,32 @@ const LOADING_MESSAGES = [
   "Consulting the Guide...",
 ];
 
+async function readErrorMessage(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const data = (await response.json()) as { error?: string };
+      if (typeof data.error === "string" && data.error.trim().length > 0) {
+        return data.error;
+      }
+    } catch {
+      // Fall through to text parsing.
+    }
+  }
+
+  try {
+    const text = (await response.text()).trim();
+    if (text.length > 0) {
+      return text;
+    }
+  } catch {
+    // Fall through to the generic message below.
+  }
+
+  return "Generation failed";
+}
+
 export default function NewGamePage() {
   const router = useRouter();
 
@@ -80,8 +106,7 @@ export default function NewGamePage() {
         });
 
         if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error ?? "Generation failed");
+          throw new Error(await readErrorMessage(res));
         }
 
         const { gameId } = await res.json();

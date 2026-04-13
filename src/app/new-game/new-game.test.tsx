@@ -177,4 +177,28 @@ describe("NewGamePage", () => {
       screen.getByRole("button", { name: /try again/i }),
     ).toBeInTheDocument();
   });
+
+  it("shows plain-text API errors when the failure response is not JSON", async () => {
+    const user = userEvent.setup();
+    vi.mocked(fetch).mockResolvedValue(
+      new Response("An error occurred while generating the world", {
+        status: 500,
+        headers: { "Content-Type": "text/plain" },
+      }),
+    );
+
+    render(<NewGamePage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/derelict space station/i),
+      "A mysterious abandoned laboratory deep underground",
+    );
+    await user.click(screen.getByRole("button", { name: /generate world/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/An error occurred while generating the world/i),
+      ).toBeInTheDocument();
+    });
+  });
 });

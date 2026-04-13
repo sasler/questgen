@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { getSessionOwnerIds } from "@/lib/auth-utils";
+import { getSessionOwnerIds, resolveRequestSession } from "@/lib/auth-utils";
 import { formatStorageError, getStorage } from "@/lib/storage";
 import type { GameMetadata } from "@/types";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: NextRequest) {
-  const session = await auth();
+export async function GET(request: NextRequest) {
+  const session = await resolveRequestSession(request);
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

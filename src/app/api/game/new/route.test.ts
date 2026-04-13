@@ -120,6 +120,20 @@ describe("POST /api/game/new", () => {
     );
   });
 
+  it("returns 401 when copilot mode is selected without a GitHub access token", async () => {
+    mockedAuth.mockResolvedValue({
+      ...mockSession,
+      accessToken: undefined,
+    } as never);
+
+    const res = await POST(makeRequest(validBody));
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body.error).toMatch(/reconnect github copilot/i);
+    expect(mockedGenerateWorld).not.toHaveBeenCalled();
+  });
+
   it("passes correct aiConfig for byok mode", async () => {
     mockedAuth.mockResolvedValue(mockSession as never);
     mockedGenerateWorld.mockResolvedValue({
@@ -169,6 +183,18 @@ describe("POST /api/game/new", () => {
 
     expect(res.status).toBe(500);
     expect(body.error).toBe("AI generation failed");
+  });
+
+  it("returns JSON 500 when generateWorld throws unexpectedly", async () => {
+    mockedAuth.mockResolvedValue(mockSession as never);
+    mockedGenerateWorld.mockRejectedValue(new Error("Copilot timeout"));
+
+    const res = await POST(makeRequest(validBody));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(res.headers.get("content-type")).toContain("application/json");
+    expect(body.error).toContain("Copilot timeout");
   });
 
   it("includes warnings in response", async () => {

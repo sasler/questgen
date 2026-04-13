@@ -386,28 +386,12 @@ describe("generateWorld", () => {
     expect(repairPrompt).toContain("Missing room content");
   });
 
-  it("retries a broken review within the same generation attempt", async () => {
+  it("keeps the valid authored draft when the review pass returns invalid JSON", async () => {
     const validDraft = buildGeneratedContent(request.size);
-    const brokenReview = JSON.stringify({
-      rooms: {
-        "room-1": {
-          name: "Broken Review Room",
-          description: "This review draft threw away most of the scaffold.",
-        },
-      },
-      items: {},
-      npcs: {},
-      interactables: {},
-      puzzles: {},
-      locks: {},
-      winCondition: {
-        description: "Still broken.",
-      },
-    });
+    const brokenReview = "An error occurred while reviewing the world";
     const provider = createMockProvider([
       validDraft,
       brokenReview,
-      validDraft,
     ]);
 
     const result = await generateWorld(
@@ -420,51 +404,10 @@ describe("generateWorld", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(provider.generateCompletion).toHaveBeenCalledTimes(3);
-    expect(
-      (provider.generateCompletion as ReturnType<typeof vi.fn>).mock.calls[2][0],
-    ).toContain("Review the authored world");
-  });
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
 
-  it("keeps repair prompts anchored to the last structurally valid authored draft", async () => {
-    const validDraft = buildGeneratedContent(request.size);
-    const brokenReview = JSON.stringify({
-      rooms: {
-        "room-1": {
-          name: "Broken Review Room",
-          description: "This review draft threw away most of the scaffold.",
-        },
-      },
-      items: {},
-      npcs: {},
-      interactables: {},
-      puzzles: {},
-      locks: {},
-      winCondition: {
-        description: "Still broken.",
-      },
-    });
-    const provider = createMockProvider([
-      validDraft,
-      brokenReview,
-      validDraft,
-      validDraft,
-    ]);
-
-    const result = await generateWorld(
-      request,
-      settings,
-      "user-1",
-      { mode: "copilot", githubToken: "test-token" },
-      storage,
-      provider,
-    );
-
-    expect(result.success).toBe(true);
-
-    const repairPrompt = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock.calls[2][0];
-    expect(repairPrompt).toContain("Generated Room 1");
-    expect(repairPrompt).not.toContain("Broken Review Room");
+    const savedWorld = (storage.saveWorld as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(savedWorld.rooms["room-1"].name).toBe("Generated Room 1");
   });
 
   it("fails generation when AI content does not satisfy the deterministic scaffold", async () => {

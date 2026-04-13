@@ -82,7 +82,10 @@ const GeneratedWorldContentSchema = z.object({
 });
 
 type GeneratedWorldContent = z.infer<typeof GeneratedWorldContentSchema>;
-const MAX_GENERATION_ATTEMPTS = 3;
+const MAX_GENERATION_ATTEMPTS = 2;
+type GeneratedWorldContentRequest =
+  | { content: GeneratedWorldContent; error?: undefined }
+  | { content: null; error: string };
 
 function extractJSON(raw: string): string | null {
   const stripped = raw.replace(/```(?:json)?\s*/g, "").replace(/```/g, "");
@@ -300,17 +303,39 @@ async function requestGeneratedWorldContent(
   aiConfig: AIProviderConfig,
   settings: GameSettings,
   prompt: string,
-): Promise<GeneratedWorldContent | null> {
-  const completion = await ai.generateCompletion(
-    prompt,
-    {
-      model: settings.generationModel,
-      systemMessage: WORLD_GENERATION_SYSTEM_PROMPT,
-    },
-    aiConfig,
-  );
+): Promise<GeneratedWorldContentRequest> {
+  try {
+    const completion = await ai.generateCompletion(
+      prompt,
+      {
+        model: settings.generationModel,
+        systemMessage: WORLD_GENERATION_SYSTEM_PROMPT,
+      },
+      aiConfig,
+    );
 
-  return parseGeneratedWorldContent(completion.content);
+    if (typeof completion.content !== "string") {
+      return {
+        content: null,
+        error: "The AI returned a non-text world payload.",
+      };
+    }
+
+    const content = parseGeneratedWorldContent(completion.content);
+    if (!content) {
+      return {
+        content: null,
+        error: "The authored world did not parse as valid JSON matching the required schema.",
+      };
+    }
+
+    return { content };
+  } catch (error) {
+    return {
+      content: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function authorWorldContent(
@@ -321,104 +346,145 @@ async function authorWorldContent(
   scaffoldWorld: GameWorld,
 ): Promise<GeneratedWorldContent> {
   const scaffoldSummary = buildScaffoldSummary(scaffoldWorld);
-  let issues: string[] = [];
-  let previousAttempt = "";
+  const generationAttempt = await requestGeneratedWorldContent(
+    ai,
+    aiConfig,
+    settings,
+    buildWorldGenerationPrompt(request, settings, scaffoldSummary),
+  );
 
-  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
-    const initialPrompt =
-      attempt === 0
-        ? buildWorldGenerationPrompt(request, settings, scaffoldSummary)
-        : buildWorldRepairPrompt(
-            request,
-            settings,
-            scaffoldSummary,
-            previousAttempt,
-            issues,
-            "repair",
-          );
-    const initialContent = await requestGeneratedWorldContent(
-      ai,
-      aiConfig,
-      settings,
-      initialPrompt,
-    );
+  let candidateContent = generationAttempt.content;
+  let issues = generationAttempt.error ? [generationAttempt.error] : [];
+  let previousAttempt = candidateContent ? JSON.stringify(candidateContent, null, 2) : "{}";
 
-    if (!initialContent) {
-      issues = [
-        "The authored world did not parse as valid JSON matching the required schema.",
-      ];
-      previousAttempt = previousAttempt || "{}";
-      continue;
-    }
-
-    previousAttempt = JSON.stringify(initialContent, null, 2);
+  if (candidateContent) {
     const contentErrors = validateGeneratedContentAgainstWorld(
-      initialContent,
+      candidateContent,
       scaffoldWorld,
     );
     if (contentErrors.length > 0) {
+      candidateContent = null;
       issues = contentErrors;
-      continue;
     }
+  }
 
-    const validInitialAttempt = previousAttempt;
-    let reviewIssues: string[] = [];
-
-    for (let reviewAttempt = 0; reviewAttempt < MAX_GENERATION_ATTEMPTS; reviewAttempt += 1) {
-      const reviewPrompt = buildWorldRepairPrompt(
+  if (!candidateContent) {
+    const repairAttempt = await requestGeneratedWorldContent(
+      ai,
+      aiConfig,
+      settings,
+      buildWorldRepairPrompt(
         request,
         settings,
         scaffoldSummary,
-        validInitialAttempt,
-        reviewIssues,
-        "review",
-      );
-      const reviewedContent = await requestGeneratedWorldContent(
-        ai,
-        aiConfig,
-        settings,
-        reviewPrompt,
-      );
+        previousAttempt,
+        issues,
+        "repair",
+      ),
+    );
 
-      if (!reviewedContent) {
-        reviewIssues = [
-          "The review pass did not return valid JSON matching the required schema.",
-        ];
-        continue;
-      }
-
-      const reviewedContentErrors = validateGeneratedContentAgainstWorld(
-        reviewedContent,
-        scaffoldWorld,
+    if (!repairAttempt.content) {
+      throw new Error(
+        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues([
+          ...issues,
+          repairAttempt.error,
+        ])}`,
       );
-      if (reviewedContentErrors.length > 0) {
-        reviewIssues = reviewedContentErrors;
-        continue;
-      }
-
-      const candidateWorld = applyGeneratedWorldContent(
-        scaffoldWorld,
-        reviewedContent,
-      );
-      const validation = validateWorld(candidateWorld);
-      if (!validation.valid) {
-        reviewIssues = validation.errors.map((error) => error.message);
-        continue;
-      }
-
-      return reviewedContent;
     }
 
-    issues =
-      reviewIssues.length > 0
-        ? reviewIssues
-        : ["The review pass could not confirm the authored world."];
-    previousAttempt = validInitialAttempt;
+    const repairErrors = validateGeneratedContentAgainstWorld(
+      repairAttempt.content,
+      scaffoldWorld,
+    );
+    if (repairErrors.length > 0) {
+      throw new Error(
+        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(repairErrors)}`,
+      );
+    }
+
+    candidateContent = repairAttempt.content;
+    previousAttempt = JSON.stringify(candidateContent, null, 2);
   }
 
-  throw new Error(
-    `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(issues)}`,
+  let candidateWorld = applyGeneratedWorldContent(scaffoldWorld, candidateContent);
+  let validation = validateWorld(candidateWorld);
+  if (!validation.valid) {
+    const validationRepairAttempt = await requestGeneratedWorldContent(
+      ai,
+      aiConfig,
+      settings,
+      buildWorldRepairPrompt(
+        request,
+        settings,
+        scaffoldSummary,
+        previousAttempt,
+        validation.errors.map((error) => error.message),
+        "repair",
+      ),
+    );
+
+    if (!validationRepairAttempt.content) {
+      throw new Error(
+        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(
+          validation.errors.map((error) => error.message),
+        )}; ${validationRepairAttempt.error}`,
+      );
+    }
+
+    const repairErrors = validateGeneratedContentAgainstWorld(
+      validationRepairAttempt.content,
+      scaffoldWorld,
+    );
+    if (repairErrors.length > 0) {
+      throw new Error(
+        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(repairErrors)}`,
+      );
+    }
+
+    candidateContent = validationRepairAttempt.content;
+    candidateWorld = applyGeneratedWorldContent(scaffoldWorld, candidateContent);
+    validation = validateWorld(candidateWorld);
+    if (!validation.valid) {
+      throw new Error(
+        `AI world content failed validation after ${MAX_GENERATION_ATTEMPTS} attempts: ${summarizeValidationIssues(
+          validation.errors.map((error) => error.message),
+        )}`,
+      );
+    }
+  }
+
+  const reviewAttempt = await requestGeneratedWorldContent(
+    ai,
+    aiConfig,
+    settings,
+    buildWorldRepairPrompt(
+      request,
+      settings,
+      scaffoldSummary,
+      JSON.stringify(candidateContent, null, 2),
+      [],
+      "review",
+    ),
   );
+
+  if (!reviewAttempt.content) {
+    return candidateContent;
+  }
+
+  const reviewErrors = validateGeneratedContentAgainstWorld(
+    reviewAttempt.content,
+    scaffoldWorld,
+  );
+  if (reviewErrors.length > 0) {
+    return candidateContent;
+  }
+
+  const reviewedWorld = applyGeneratedWorldContent(
+    scaffoldWorld,
+    reviewAttempt.content,
+  );
+  const reviewedValidation = validateWorld(reviewedWorld);
+  return reviewedValidation.valid ? reviewAttempt.content : candidateContent;
 }
 
 export async function generateWorld(

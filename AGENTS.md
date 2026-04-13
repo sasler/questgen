@@ -17,7 +17,7 @@ For each logical task:
 0. **Check git state first** — before starting the task, run `git fetch --all --prune` and `git status -sb` to confirm the working tree is in the expected state and the current branch is not behind its upstream. If it is behind, pull/rebase and resolve that before writing code.
 1. **Write failing tests first** — but only tests that meaningfully verify functionality. Do not add filler tests.
 2. **Implement the task** — make the failing tests pass.
-3. **Run tests and smoke tests** — run the relevant task tests, then run the repo smoke checks: `npx vitest run`, `npm run typecheck`, and `npx next build`. If anything fails, fix it and rerun until all pass.
+3. **Run tests and smoke tests** — run the relevant task tests, then run the repo smoke checks: `npx vitest run`, `npm run typecheck`, `npx next build`, and `npx playwright test e2e/game-creation-smoke.spec.ts`. If anything fails, fix it and rerun until all pass.
 4. **Code review** — use a subagent with a different AI model than the one used to generate the code.
 5. **Address review findings carefully** — evaluate each suggestion, fix the valid ones, then go back to step 2 and keep iterating until the review is satisfied and the code is reverified.
 6. **Update docs when behavior changes** — if the task adds or changes commands, workflows, features, or other user/admin-visible behavior, update the relevant docs in the same task before moving on.

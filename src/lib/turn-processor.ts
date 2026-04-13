@@ -459,17 +459,21 @@ function buildValidatedNarrationEvent(
   return lines.join("\n");
 }
 
-function narrativeContradictsSuccessfulMovement(
-  narrative: string,
+function hasSuccessfulMovement(
   actionResults: ActionResult[],
 ): boolean {
-  const hasSuccessfulMove = actionResults.some(
+  return actionResults.some(
     (result) =>
       result.success &&
       result.stateChanges.some((change) => change.type === "player_moved"),
   );
+}
 
-  if (!hasSuccessfulMove) {
+function narrativeContradictsSuccessfulMovement(
+  narrative: string,
+  actionResults: ActionResult[],
+): boolean {
+  if (!hasSuccessfulMovement(actionResults)) {
     return false;
   }
 
@@ -522,6 +526,10 @@ async function generateValidatedNarrative(
     currentPlayer,
     gameWon,
   );
+
+  if (hasSuccessfulMovement(actionResults)) {
+    return deterministicNarrative;
+  }
 
   try {
     const narrationPrompt = buildNarrativePrompt(

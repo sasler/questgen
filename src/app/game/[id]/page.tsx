@@ -423,6 +423,9 @@ export default function GamePage() {
             }
 
             const recoveredState = (await recoveryRes.json()) as GameState;
+            if (!recoveredState.player || !recoveredState.world) {
+              throw new Error("Turn stream finished without a final result");
+            }
             return {
               success: true,
               narrative: streamedNarrative.trim(),

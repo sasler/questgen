@@ -204,6 +204,22 @@ function mockFetchWithTurn(
       );
 }
 
+function mockFetchWithIncompleteTurnStream(
+  state: GameState,
+  recoveredState: GameState,
+  streamedChunks: string[],
+) {
+  return vi
+    .fn()
+    .mockResolvedValueOnce(makeJsonResponse(state))
+    .mockResolvedValueOnce(
+      makeNdjsonResponse(
+        streamedChunks.map((chunk) => ({ type: "chunk", chunk })),
+      ),
+    )
+    .mockResolvedValueOnce(makeJsonResponse(recoveredState));
+}
+
 function mockFetchWithHint(
   state: GameState = activeGameState,
   hint = "Take the toolkit to the relay room before you attempt the final door.",
@@ -212,6 +228,16 @@ function mockFetchWithHint(
     .fn()
     .mockResolvedValueOnce(makeJsonResponse(state))
     .mockResolvedValueOnce(makeJsonResponse({ hint }));
+}
+
+function mockFetchWithAdmin(
+  state: GameState = activeGameState,
+  response = "The engine says the move succeeded; the narration drifted away from the validated result.",
+) {
+  return vi
+    .fn()
+    .mockResolvedValueOnce(makeJsonResponse(state))
+    .mockResolvedValueOnce(makeJsonResponse({ response }));
 }
 
 // ── Tests ────────────────────────────────────────────────────────
@@ -515,6 +541,42 @@ describe("Game Page", () => {
     });
   });
 
+  it("calls the admin endpoint and renders the returned analysis for /admin", async () => {
+    const user = userEvent.setup();
+    global.fetch = mockFetchWithAdmin();
+
+    await act(async () => {
+      render(<GamePage />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Command input")).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByLabelText("Command input"),
+      "/admin why did the narrator say movement failed?{Enter}",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "The engine says the move succeeded; the narration drifted away from the validated result.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    const adminCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[1];
+    expect(adminCall[0]).toBe("/api/game/game-123/admin");
+    expect(adminCall[1]).toMatchObject({
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question: "why did the narrator say movement failed?",
+      }),
+    });
+  });
+
   it("shows victory message when game won", async () => {
     const user = userEvent.setup();
     const wonResponse = {
@@ -550,6 +612,52 @@ describe("Game Page", () => {
 
     // Input should be disabled after win
     expect(screen.getByLabelText("Command input")).toBeDisabled();
+  });
+
+  it("recovers from a streamed turn that ends after chunks but without a final result", async () => {
+    const user = userEvent.setup();
+    const recoveredState: GameState = {
+      ...activeGameState,
+      world: {
+        ...world,
+        rooms: {
+          ...world.rooms,
+          "room-1": {
+            ...world.rooms["room-1"],
+            itemIds: [],
+          },
+        },
+      },
+      player: {
+        ...player,
+        inventory: ["item-1", "item-2"],
+        turnCount: 1,
+      },
+    };
+
+    global.fetch = mockFetchWithIncompleteTurnStream(
+      activeGameState,
+      recoveredState,
+      ["You pick up ", "the Old Map."],
+    );
+
+    await act(async () => {
+      render(<GamePage />);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Command input")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByLabelText("Command input"), "take old map{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByText("You pick up the Old Map.")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/\[Error: Turn stream finished without a final result]/i)).not.toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(screen.getByText("Old Map")).toBeInTheDocument();
   });
 
   it("handles fetch error gracefully", async () => {

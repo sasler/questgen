@@ -145,11 +145,10 @@ describe("WORLD_GENERATION_SYSTEM_PROMPT", () => {
     expect(p).toContain("rooms");
     expect(p).toContain("items");
     expect(p).toContain("npcs");
-    expect(p).toContain("connections");
+    expect(p).toContain("interactables");
     expect(p).toContain("puzzles");
     expect(p).toContain("locks");
     expect(p).toContain("winCondition");
-    expect(p).toContain("startRoomId");
   });
 
   it("mentions the no-magic rule", () => {
@@ -258,6 +257,23 @@ describe("buildWorldGenerationPrompt", () => {
   it("mentions JSON format", () => {
     const prompt = buildWorldGenerationPrompt(makeRequest(), makeSettings());
     expect(prompt).toContain("JSON");
+  });
+
+  it("includes deterministic scaffold details when provided", () => {
+    const prompt = buildWorldGenerationPrompt(
+      makeRequest(),
+      makeSettings(),
+      [
+        "Room IDs: room-1, room-2",
+        "Critical slots:",
+        "- item field-service-kit in room-2",
+        "- puzzle transit-core-puzzle in room-2",
+      ].join("\n"),
+    );
+
+    expect(prompt).toContain("Deterministic scaffold");
+    expect(prompt).toContain("field-service-kit");
+    expect(prompt).toContain("transit-core-puzzle");
   });
 });
 

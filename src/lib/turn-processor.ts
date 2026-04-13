@@ -398,6 +398,10 @@ function buildValidatedNarrationContext(
 function buildValidatedNarrationEvent(
   playerInput: string,
   actionResults: ActionResult[],
+  previousWorld: GameWorld,
+  previousPlayer: PlayerState,
+  currentWorld: GameWorld,
+  currentPlayer: PlayerState,
   gameWon: boolean,
 ): string {
   const lines = [`Player input: ${playerInput}`];
@@ -419,8 +423,83 @@ function buildValidatedNarrationEvent(
     lines.push("", "Game outcome: the player has just satisfied the win condition.");
   }
 
+  const moveChanges = actionResults.flatMap((result) =>
+    result.stateChanges
+      .filter((change) => change.type === "player_moved")
+      .map((change) => ({
+        success: result.success,
+        details: change.details,
+      })),
+  );
+
+  if (moveChanges.length > 0) {
+    lines.push("", "Authoritative movement outcomes:");
+    for (const moveChange of moveChanges) {
+      const fromRoomId =
+        typeof moveChange.details.from === "string"
+          ? moveChange.details.from
+          : previousPlayer.currentRoomId;
+      const toRoomId =
+        typeof moveChange.details.to === "string"
+          ? moveChange.details.to
+          : currentPlayer.currentRoomId;
+      const direction =
+        typeof moveChange.details.direction === "string"
+          ? moveChange.details.direction
+          : "unknown";
+      const fromRoomName = previousWorld.rooms[fromRoomId]?.name ?? fromRoomId;
+      const toRoomName = currentWorld.rooms[toRoomId]?.name ?? toRoomId;
+      lines.push(
+        `- ${moveChange.success ? "SUCCESS" : "FAILURE"}: player moved ${direction} from ${fromRoomName} (${fromRoomId}) to ${toRoomName} (${toRoomId}).`,
+      );
+    }
+  }
+
   lines.push("", "Narrate only what actually happened.");
   return lines.join("\n");
+}
+
+function narrativeContradictsSuccessfulMovement(
+  narrative: string,
+  actionResults: ActionResult[],
+): boolean {
+  const hasSuccessfulMove = actionResults.some(
+    (result) =>
+      result.success &&
+      result.stateChanges.some((change) => change.type === "player_moved"),
+  );
+
+  if (!hasSuccessfulMove) {
+    return false;
+  }
+
+  const normalized = normalizeText(narrative);
+  const contradictionPatterns = [
+    "already here",
+    "already in",
+    "already at",
+    "no exit",
+    "can t go",
+    "cannot go",
+    "did not move",
+    "does not move",
+    "movement failed",
+    "door is locked",
+    "exit is locked",
+    "way is locked",
+    "passage is locked",
+    "bulkhead is locked",
+    "remains locked",
+    "still locked",
+    "rebuffed",
+    "path is blocked",
+    "way is blocked",
+    "going nowhere",
+  ];
+
+  return contradictionPatterns.some((pattern) =>
+    containsNormalizedPhrase(normalized, pattern),
+  );
 }
 
 async function generateValidatedNarrative(
@@ -429,6 +508,8 @@ async function generateValidatedNarrative(
   settings: GameSettings,
   playerInput: string,
   actionResults: ActionResult[],
+  previousWorld: GameWorld,
+  previousPlayer: PlayerState,
   currentWorld: GameWorld,
   currentPlayer: PlayerState,
   history: TurnEntry[],
@@ -445,7 +526,15 @@ async function generateValidatedNarrative(
   try {
     const narrationPrompt = buildNarrativePrompt(
       buildValidatedNarrationContext(currentWorld, currentPlayer, history),
-      buildValidatedNarrationEvent(playerInput, actionResults, gameWon),
+      buildValidatedNarrationEvent(
+        playerInput,
+        actionResults,
+        previousWorld,
+        previousPlayer,
+        currentWorld,
+        currentPlayer,
+        gameWon,
+      ),
     );
     const completion = onNarrativeChunk
       ? await ai.streamCompletion(
@@ -469,10 +558,20 @@ async function generateValidatedNarrative(
     const narrative = completion.content.trim();
     const parsedNarrative = parseAIResponse(narrative)?.narrative?.trim();
     if (parsedNarrative && parsedNarrative.length > 0) {
+      if (narrativeContradictsSuccessfulMovement(parsedNarrative, actionResults)) {
+        return deterministicNarrative;
+      }
       return parsedNarrative;
     }
 
-    return narrative.length > 0 ? narrative : deterministicNarrative;
+    if (narrative.length > 0) {
+      if (narrativeContradictsSuccessfulMovement(narrative, actionResults)) {
+        return deterministicNarrative;
+      }
+      return narrative;
+    }
+
+    return deterministicNarrative;
   } catch {
     return deterministicNarrative;
   }
@@ -647,6 +746,8 @@ export async function processTurn(
     settings,
     playerInput,
     actionResults,
+    world,
+    player,
     currentWorld,
     currentPlayer,
     history,

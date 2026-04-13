@@ -14,6 +14,7 @@ import { getAvailableExits } from "@/engine";
 import { renderEntityTables, renderFullMap } from "@/lib/progression";
 import { loadSettings } from "@/lib/settings";
 import type {
+  GameState,
   GameWorld,
   PlayerState,
   TurnEntry,
@@ -287,6 +288,54 @@ export default function GamePage() {
           return;
         }
 
+        if (slashCommand.startsWith("/admin")) {
+          const question = input.trim().slice("/admin".length).trim();
+          if (!question) {
+            appendNarratorEntry(
+              "Usage: /admin <question>",
+              "admin-usage",
+            );
+            return;
+          }
+
+          setIsLoading(true);
+          setStreamingText("");
+
+          try {
+            const settings = loadSettings();
+            const body: { question: string; byokApiKey?: string } = { question };
+            if (settings.provider === "byok") {
+              body.byokApiKey = settings.byokApiKey;
+            }
+
+            const res = await fetch(`/api/game/${gameId}/admin`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data.error || "Admin request failed");
+            }
+
+            const data = await res.json();
+            appendNarratorEntry(
+              data.response ?? "The admin console stared into the void and received no paperwork in return.",
+              "admin",
+            );
+          } catch (err) {
+            appendNarratorEntry(
+              `[Error: ${err instanceof Error ? err.message : "Admin request failed"}]`,
+              "admin-error",
+            );
+          } finally {
+            setIsLoading(false);
+          }
+
+          return;
+        }
+
         appendNarratorEntry("Unknown slash command.", "slash-error");
         return;
       }
@@ -314,7 +363,11 @@ export default function GamePage() {
           throw new Error("Streaming response body missing");
         }
 
-        const readTurnResult = async (): Promise<TurnResult> => {
+        type StreamedTurnResult = TurnResult & {
+          recoveredWorld?: GameState["world"];
+        };
+
+        const readTurnResult = async (): Promise<StreamedTurnResult> => {
           const decoder = new TextDecoder();
           let buffered = "";
           let streamedNarrative = "";
@@ -360,7 +413,25 @@ export default function GamePage() {
           }
 
           if (!finalResult) {
-            throw new Error("Turn stream finished without a final result");
+            if (!streamedNarrative.trim()) {
+              throw new Error("Turn stream finished without a final result");
+            }
+
+            const recoveryRes = await fetch(`/api/game/${gameId}`);
+            if (!recoveryRes.ok) {
+              throw new Error("Turn stream finished without a final result");
+            }
+
+            const recoveredState = (await recoveryRes.json()) as GameState;
+            return {
+              success: true,
+              narrative: streamedNarrative.trim(),
+              actionResults: [],
+              newPlayerState: recoveredState.player,
+              worldChanged: true,
+              gameWon: recoveredState.metadata.completed,
+              recoveredWorld: recoveredState.world,
+            };
           }
 
           return finalResult;
@@ -376,8 +447,12 @@ export default function GamePage() {
         // Update player state
         setPlayer(finalResult.newPlayerState);
 
+        if (finalResult.recoveredWorld) {
+          setWorld(finalResult.recoveredWorld);
+        }
+
         // Refetch world if it changed
-        if (finalResult.worldChanged) {
+        if (finalResult.worldChanged && !finalResult.recoveredWorld) {
           const worldRes = await fetch(`/api/game/${gameId}`);
           if (worldRes.ok) {
             const fullState = await worldRes.json();

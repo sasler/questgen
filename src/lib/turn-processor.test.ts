@@ -775,6 +775,104 @@ describe("processTurn", () => {
     expect(storage.saveWorld).not.toHaveBeenCalled();
   });
 
+  it("falls back to deterministic narration when the prose model contradicts a successful move", async () => {
+    const player = createTestPlayer({
+      currentRoomId: "room2",
+      visitedRooms: ["room1", "room2"],
+    });
+    const storage = createMockStorage({ player });
+    const provider = createMockProvider([
+      "You attempt to head south, but the universe insists you are already in the Starting Room and going nowhere.",
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "south",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.newPlayerState.currentRoomId).toBe("room1");
+    expect(result.narrative).toContain("You move south to Starting Room.");
+    expect(result.narrative).not.toContain("already in");
+  });
+
+  it("treats 'can't go' phrasing as a contradiction for a successful move", async () => {
+    const player = createTestPlayer({
+      currentRoomId: "room2",
+      visitedRooms: ["room1", "room2"],
+    });
+    const storage = createMockStorage({ player });
+    const provider = createMockProvider([
+      "You can't go that way, because the universe has apparently unionized against progress.",
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "south",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.narrative).toContain("You move south to Starting Room.");
+  });
+
+  it("keeps valid movement narration that references a previously locked passage", async () => {
+    const player = createTestPlayer({
+      currentRoomId: "room2",
+      visitedRooms: ["room1", "room2"],
+    });
+    const storage = createMockStorage({ player });
+    const provider = createMockProvider([
+      "You pass through the previously locked bulkhead and arrive in the Starting Room with only modest dignity loss.",
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "south",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.narrative).toContain("previously locked bulkhead");
+  });
+
+  it("keeps valid movement narration that mentions a locked object in the destination room", async () => {
+    const player = createTestPlayer({
+      currentRoomId: "room2",
+      visitedRooms: ["room1", "room2"],
+    });
+    const storage = createMockStorage({ player });
+    const provider = createMockProvider([
+      "You arrive in the Starting Room. A maintenance locker is locked in the corner, radiating petty resolve.",
+    ]);
+
+    const result = await processTurn(
+      "game-1",
+      "south",
+      "turn-1",
+      defaultAIConfig,
+      createTestSettings(),
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.narrative).toContain("maintenance locker is locked");
+  });
+
   it("deterministically resolves hinted use-item commands against interactable aliases", async () => {
     const world = createTestWorld({
       items: {

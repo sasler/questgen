@@ -338,14 +338,30 @@ describe("generateWorld", () => {
       "Probability Relay",
     );
 
-    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(1);
     const promptCall = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock
       .calls[0] as [string, AICompletionOptions];
     expect(promptCall[0]).toContain("Structural scaffold");
     expect(promptCall[1].model).toBe(settings.generationModel);
+  });
 
-    const reviewPrompt = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock.calls[1][0];
-    expect(reviewPrompt).toContain("Review the authored world");
+  it("passes 120 s timeout to every generateCompletion call", async () => {
+    const result = await generateWorld(
+      request,
+      settings,
+      "user-1",
+      { mode: "copilot", githubToken: "test-token" },
+      storage,
+      provider,
+    );
+
+    expect(result.success).toBe(true);
+    const calls = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock
+      .calls as Array<[string, AICompletionOptions]>;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [, opts] of calls) {
+      expect(opts.timeout).toBe(120_000);
+    }
   });
 
   it("retries with a repair prompt when the first AI-authored world fails scaffold validation", async () => {
@@ -379,35 +395,11 @@ describe("generateWorld", () => {
     );
 
     expect(result.success).toBe(true);
-    expect(provider.generateCompletion).toHaveBeenCalledTimes(3);
+    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
 
     const repairPrompt = (provider.generateCompletion as ReturnType<typeof vi.fn>).mock.calls[1][0];
     expect(repairPrompt).toContain("Repair the authored world");
     expect(repairPrompt).toContain("Missing room content");
-  });
-
-  it("keeps the valid authored draft when the review pass returns invalid JSON", async () => {
-    const validDraft = buildGeneratedContent(request.size);
-    const brokenReview = "An error occurred while reviewing the world";
-    const provider = createMockProvider([
-      validDraft,
-      brokenReview,
-    ]);
-
-    const result = await generateWorld(
-      request,
-      settings,
-      "user-1",
-      { mode: "copilot", githubToken: "test-token" },
-      storage,
-      provider,
-    );
-
-    expect(result.success).toBe(true);
-    expect(provider.generateCompletion).toHaveBeenCalledTimes(2);
-
-    const savedWorld = (storage.saveWorld as ReturnType<typeof vi.fn>).mock.calls[0][1];
-    expect(savedWorld.rooms["room-1"].name).toBe("Generated Room 1");
   });
 
   it("fails generation when AI content does not satisfy the deterministic scaffold", async () => {

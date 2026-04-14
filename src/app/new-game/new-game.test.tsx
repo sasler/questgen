@@ -91,9 +91,9 @@ describe("NewGamePage", () => {
   it("calls API with correct payload", async () => {
     const user = userEvent.setup();
     vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ gameId: "game-123" }), {
-        status: 201,
-        headers: { "Content-Type": "application/json" },
+      new Response('event: complete\ndata: {"gameId":"game-123"}\n\n', {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
       }),
     );
 
@@ -133,9 +133,9 @@ describe("NewGamePage", () => {
   it("redirects on success", async () => {
     const user = userEvent.setup();
     vi.mocked(fetch).mockResolvedValue(
-      new Response(JSON.stringify({ gameId: "game-abc" }), {
-        status: 201,
-        headers: { "Content-Type": "application/json" },
+      new Response('event: complete\ndata: {"gameId":"game-abc"}\n\n', {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
       }),
     );
 
@@ -155,10 +155,10 @@ describe("NewGamePage", () => {
   it("shows error on failure", async () => {
     const user = userEvent.setup();
     vi.mocked(fetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({ error: "Generation failed" }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      ),
+      new Response('event: error\ndata: {"message":"Generation failed"}\n\n', {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
     );
 
     render(<NewGamePage />);

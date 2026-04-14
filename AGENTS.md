@@ -87,3 +87,13 @@ npx playwright test   # E2E tests (requires dev server running)
 - `/new-game` — New game creation wizard
 - `/game/[id]` — Main gameplay page
 - `/dashboard` — Saved games list
+
+## Game Creation API (SSE)
+
+`POST /api/game/new` returns a **Server-Sent Events stream** (`Content-Type: text/event-stream`):
+
+- `event: progress` — `{ stage: string, message: string }` — live status updates
+- `event: complete` — `{ gameId: string, warnings?: string[] }` — generation finished
+- `event: error` — `{ message: string }` — unrecoverable generation failure
+
+Auth/validation errors (401/400) return JSON *before* the stream opens. Only the generation phase uses SSE. The Vercel `maxDuration` for this route is **300 s** (Pro plan). Each AI call has a 90 s SDK timeout; worst-case 3 calls = 270 s.

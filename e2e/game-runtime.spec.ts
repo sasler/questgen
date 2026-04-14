@@ -32,17 +32,12 @@ test.describe("Live game runtime", () => {
       "A grounded sci-fi salvage mission through a derelict orbital relay full of failed maintenance plans.",
     );
     await page.getByText("Small", { exact: true }).click();
-    const [createResponse] = await Promise.all([
-      page.waitForResponse(
-        (response) =>
-          response.url().includes("/api/game/new") &&
-          response.request().method() === "POST",
-      ),
+
+    // Route returns SSE (text/event-stream); wait for navigation to /game/[id]
+    await Promise.all([
+      page.waitForURL(/\/game\/[0-9a-f-]+$/i, { timeout: 300_000 }),
       page.getByRole("button", { name: /generate world/i }).click(),
     ]);
-
-    const createResponseBody = await createResponse.text();
-    expect(createResponse.status(), createResponseBody).toBe(201);
 
     await expect(page).toHaveURL(/\/game\//);
     await expect(page.getByLabel("Command input")).toBeVisible();

@@ -345,7 +345,7 @@ describe("generateWorld", () => {
     expect(promptCall[1].model).toBe(settings.generationModel);
   });
 
-  it("passes 120 s timeout to every generateCompletion call", async () => {
+  it("passes 90 s timeout to every generateCompletion call", async () => {
     const result = await generateWorld(
       request,
       settings,

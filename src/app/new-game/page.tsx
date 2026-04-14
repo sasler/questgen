@@ -90,21 +90,26 @@ async function consumeSSEStream(
     }
   };
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      buffer += decoder.decode(); // flush remaining bytes
-      break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode(); // flush remaining bytes
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() ?? "";
+      for (const block of blocks) processBlock(block);
     }
-    buffer += decoder.decode(value, { stream: true });
 
-    const blocks = buffer.split("\n\n");
-    buffer = blocks.pop() ?? "";
-    for (const block of blocks) processBlock(block);
+    // Process any final block not terminated by \n\n
+    if (buffer.trim()) processBlock(buffer);
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
   }
-
-  // Process any final block not terminated by \n\n
-  if (buffer.trim()) processBlock(buffer);
 
   if (!gameId) throw new Error("Game creation failed: no game ID received");
   return gameId;

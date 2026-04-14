@@ -24,26 +24,23 @@ test.describe("Game creation smoke", () => {
     await page.getByLabel(/describe your adventure/i).fill(description);
     await page.getByText("Small", { exact: true }).click();
 
-    const [createResponse] = await Promise.all([
-      page.waitForResponse(
-        (response) =>
-          response.url().includes("/api/game/new") &&
-          response.request().method() === "POST",
-      ),
+    // The /api/game/new route returns SSE (text/event-stream), so we wait for
+    // the page to navigate to /game/[id] rather than parsing the API response.
+    // Timeout is 300s to match the route's maxDuration (worst case: 3 AI calls × 90s).
+    await Promise.all([
+      page.waitForURL(/\/game\/[0-9a-f-]+$/i, { timeout: 300_000 }),
       page.getByRole("button", { name: /generate world/i }).click(),
     ]);
 
-    expect(createResponse.status(), await createResponse.text()).toBe(201);
-    const createPayload = (await createResponse.json()) as {
-      gameId: string;
-      warnings?: string[];
-    };
+    const gameIdMatch = page.url().match(/\/game\/([0-9a-f-]+)$/i);
+    expect(gameIdMatch).not.toBeNull();
+    const gameId = gameIdMatch![1];
 
-    expect(createPayload.gameId).toMatch(
+    expect(gameId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     );
 
-    await expect(page).toHaveURL(new RegExp(`/game/${createPayload.gameId}$`));
+    await expect(page).toHaveURL(new RegExp(`/game/${gameId}$`));
 
     const gameState = await page.evaluate(async (gameId) => {
       const res = await fetch(`/api/game/${gameId}`);
@@ -54,7 +51,7 @@ test.describe("Game creation smoke", () => {
           player?: { currentRoomId?: string };
         },
       };
-    }, createPayload.gameId);
+    }, gameId);
 
     expect(gameState.status).toBe(200);
     expect(Object.keys(gameState.body.world?.rooms ?? {})).not.toHaveLength(0);
@@ -76,7 +73,7 @@ test.describe("Game creation smoke", () => {
     expect(
       gameList.body.games?.some(
         (game) =>
-          game.id === createPayload.gameId && game.description === description,
+          game.id === gameId && game.description === description,
       ),
     ).toBe(true);
   });

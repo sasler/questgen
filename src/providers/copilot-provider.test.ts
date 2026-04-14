@@ -271,6 +271,36 @@ describe("CopilotProvider", () => {
       );
     });
 
+    it("passes timeout option to sendAndWait when provided", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      await provider.generateCompletion(
+        "test",
+        { ...options, timeout: 120_000 },
+        copilotConfig,
+      );
+
+      expect(mockSendAndWait).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "test" }),
+        120_000,
+      );
+    });
+
+    it("passes undefined timeout to sendAndWait when not specified", async () => {
+      const session = makeSession();
+      mockCreateSession.mockResolvedValue(session);
+      mockSendAndWait.mockResolvedValue({ data: { content: "ok" } });
+
+      await provider.generateCompletion("test", options, copilotConfig);
+
+      expect(mockSendAndWait).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "test" }),
+        undefined,
+      );
+    });
+
     it("disconnects session after successful request", async () => {
       const session = makeSession();
       mockCreateSession.mockResolvedValue(session);

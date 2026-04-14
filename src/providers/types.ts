@@ -13,6 +13,8 @@ export interface AICompletionOptions {
   systemMessage: string;
   maxTokens?: number;
   temperature?: number;
+  /** Timeout in milliseconds to wait for the AI response. Defaults to the SDK's built-in 60 s. */
+  timeout?: number;
 }
 
 export interface AICompletionResult {

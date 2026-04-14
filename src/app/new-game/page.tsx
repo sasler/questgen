@@ -53,6 +53,68 @@ async function readErrorMessage(response: Response): Promise<string> {
   return "Generation failed";
 }
 
+async function consumeSSEStream(
+  res: Response,
+  onProgress: (message: string) => void,
+): Promise<string> {
+  if (!res.body) throw new Error("No response body");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let gameId: string | null = null;
+
+  const processBlock = (block: string) => {
+    if (!block.trim()) return;
+    const lines = block.split("\n");
+    let eventName = "";
+    let dataStr = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) eventName = line.slice(7).trim();
+      else if (line.startsWith("data: ")) dataStr = line.slice(6).trim();
+    }
+    if (!eventName || !dataStr) return;
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(dataStr) as Record<string, unknown>;
+    } catch {
+      return; // Skip malformed events
+    }
+
+    if (eventName === "progress" && typeof payload.message === "string") {
+      onProgress(payload.message);
+    } else if (eventName === "complete" && typeof payload.gameId === "string") {
+      gameId = payload.gameId;
+    } else if (eventName === "error" && typeof payload.message === "string") {
+      throw new Error(payload.message);
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buffer += decoder.decode(); // flush remaining bytes
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop() ?? "";
+      for (const block of blocks) processBlock(block);
+    }
+
+    // Process any final block not terminated by \n\n
+    if (buffer.trim()) processBlock(buffer);
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+
+  if (!gameId) throw new Error("Game creation failed: no game ID received");
+  return gameId;
+}
+
 export default function NewGamePage() {
   const router = useRouter();
 
@@ -62,6 +124,7 @@ export default function NewGamePage() {
   const [validationError, setValidationError] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
+  const [progressMsg, setProgressMsg] = useState("");
   const [apiError, setApiError] = useState("");
 
   useEffect(() => {
@@ -77,6 +140,7 @@ export default function NewGamePage() {
       e.preventDefault();
       setValidationError("");
       setApiError("");
+      setProgressMsg("");
 
       if (description.trim().length < 10) {
         setValidationError("Description must be at least 10 characters.");
@@ -111,7 +175,7 @@ export default function NewGamePage() {
           throw new Error(await readErrorMessage(res));
         }
 
-        const { gameId } = await res.json();
+        const gameId = await consumeSSEStream(res, (msg) => setProgressMsg(msg));
         router.push(`/game/${gameId}`);
       } catch (err) {
         setApiError(err instanceof Error ? err.message : "Something went wrong");
@@ -206,7 +270,7 @@ export default function NewGamePage() {
           {isGenerating && (
             <div data-testid="loading-message" className="text-center py-4">
               <p className="text-[#00ff41] animate-pulse">
-                {LOADING_MESSAGES[loadingMsgIndex]}
+                {progressMsg || LOADING_MESSAGES[loadingMsgIndex]}
               </p>
               <div className="mt-2 text-xs text-[#4a6741]">
                 ████░░░░░░ generating...

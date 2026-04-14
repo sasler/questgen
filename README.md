@@ -206,6 +206,7 @@ debugging a game:
 - `RoomInfoPanel`, `/hint`, `/showentitytables`, and `/admin` all rely on the same authoritative persisted state, while hidden debug commands stay out of the player-facing UI
 - The right-hand gameplay sidebar now contains the full ASCII map panel; it scrolls horizontally for
   wider layouts instead of clipping room names off-screen
+- **Game creation uses Server-Sent Events (SSE)** — `POST /api/game/new` streams progress events (`progress`, `complete`, `error`) so the browser shows live status and Vercel proxy timeouts don't interrupt long generations. Each AI call has a 90-second per-call timeout.
 
 ## License
 

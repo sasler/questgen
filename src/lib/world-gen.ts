@@ -313,6 +313,7 @@ async function requestGeneratedWorldContent(
       {
         model: settings.generationModel,
         systemMessage: WORLD_GENERATION_SYSTEM_PROMPT,
+        timeout: 90_000,
       },
       aiConfig,
     );
@@ -347,8 +348,10 @@ async function authorWorldContent(
   request: GameGenerationRequest,
   settings: GameSettings,
   scaffoldWorld: GameWorld,
+  onProgress?: (stage: string, message: string) => void,
 ): Promise<GeneratedWorldContent> {
   const scaffoldSummary = buildScaffoldSummary(scaffoldWorld);
+  onProgress?.("generating", "Generating world content...");
   const generationAttempt = await requestGeneratedWorldContent(
     ai,
     aiConfig,
@@ -372,6 +375,7 @@ async function authorWorldContent(
   }
 
   if (!candidateContent) {
+    onProgress?.("repairing", "Repairing world structure...");
     const repairAttempt = await requestGeneratedWorldContent(
       ai,
       aiConfig,
@@ -409,6 +413,7 @@ async function authorWorldContent(
   let candidateWorld = applyGeneratedWorldContent(scaffoldWorld, candidateContent);
   let validation = validateWorld(candidateWorld);
   if (!validation.valid) {
+    onProgress?.("repairing", "Fixing validation issues...");
     const validationRepairAttempt = await requestGeneratedWorldContent(
       ai,
       aiConfig,
@@ -454,38 +459,7 @@ async function authorWorldContent(
     }
   }
 
-  const reviewAttempt = await requestGeneratedWorldContent(
-    ai,
-    aiConfig,
-    settings,
-    buildWorldRepairPrompt(
-      request,
-      settings,
-      scaffoldSummary,
-      JSON.stringify(candidateContent, null, 2),
-      [],
-      "review",
-    ),
-  );
-
-  if (!reviewAttempt.content) {
-    return candidateContent;
-  }
-
-  const reviewErrors = validateGeneratedContentAgainstWorld(
-    reviewAttempt.content,
-    scaffoldWorld,
-  );
-  if (reviewErrors.length > 0) {
-    return candidateContent;
-  }
-
-  const reviewedWorld = applyGeneratedWorldContent(
-    scaffoldWorld,
-    reviewAttempt.content,
-  );
-  const reviewedValidation = validateWorld(reviewedWorld);
-  return reviewedValidation.valid ? reviewAttempt.content : candidateContent;
+  return candidateContent;
 }
 
 export async function generateWorld(
@@ -495,6 +469,7 @@ export async function generateWorld(
   aiConfig: AIProviderConfig,
   storage?: IGameStorage,
   provider?: IAIProvider,
+  onProgress?: (stage: string, message: string) => void,
 ): Promise<WorldGenResult> {
   let resolvedStorage: IGameStorage;
   let ai: IAIProvider;
@@ -515,6 +490,7 @@ export async function generateWorld(
   let warnings: string[] = [];
 
   try {
+    onProgress?.("scaffold", "Building world map...");
     world = buildDeterministicWorld(request, generationSeed);
     const generatedContent = await authorWorldContent(
       ai,
@@ -522,6 +498,7 @@ export async function generateWorld(
       request,
       settings,
       world,
+      onProgress,
     );
     world = applyGeneratedWorldContent(world, generatedContent);
     const validation = validateWorld(world);
@@ -542,6 +519,7 @@ export async function generateWorld(
   }
 
   try {
+    onProgress?.("saving", "Saving world data...");
     const initialPlayer: PlayerState = {
       currentRoomId: world.startRoomId,
       inventory: [],

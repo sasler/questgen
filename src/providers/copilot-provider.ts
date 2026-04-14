@@ -187,7 +187,7 @@ export class CopilotProvider implements IAIProvider {
       const session = await client.createSession(buildSessionConfig(options, config));
 
       try {
-        const response = await session.sendAndWait({ prompt });
+        const response = await session.sendAndWait({ prompt }, options.timeout);
 
         if (!response) {
           throw new Error("No response received from the AI model");

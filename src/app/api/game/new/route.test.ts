@@ -24,6 +24,30 @@ function makeRequest(body?: unknown): NextRequest {
   });
 }
 
+async function readSSEEvents(
+  res: Response,
+): Promise<Array<{ event: string; data: Record<string, unknown> }>> {
+  const text = await res.text();
+  const events: Array<{ event: string; data: Record<string, unknown> }> = [];
+  const blocks = text.split("\n\n").filter((b) => b.trim());
+  for (const block of blocks) {
+    const lines = block.split("\n");
+    let eventName = "";
+    let dataStr = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) eventName = line.slice(7).trim();
+      else if (line.startsWith("data: ")) dataStr = line.slice(6).trim();
+    }
+    if (eventName && dataStr) {
+      events.push({
+        event: eventName,
+        data: JSON.parse(dataStr) as Record<string, unknown>,
+      });
+    }
+  }
+  return events;
+}
+
 const validRequest = {
   description: "A mystery on a space station",
   size: "medium" as const,
@@ -86,7 +110,7 @@ describe("POST /api/game/new", () => {
     expect(body.error).toBeDefined();
   });
 
-  it("returns 201 with gameId on success", async () => {
+  it("returns SSE stream with complete event on success", async () => {
     mockedAuth.mockResolvedValue(mockSession as never);
     mockedGenerateWorld.mockResolvedValue({
       success: true,
@@ -94,10 +118,13 @@ describe("POST /api/game/new", () => {
     });
 
     const res = await POST(makeRequest(validBody));
-    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
 
-    expect(res.status).toBe(201);
-    expect(body.gameId).toBe("game-456");
+    const events = await readSSEEvents(res);
+    const completeEvent = events.find((e) => e.event === "complete");
+    expect(completeEvent).toBeDefined();
+    expect(completeEvent?.data.gameId).toBe("game-456");
   });
 
   it("passes correct aiConfig for copilot mode", async () => {
@@ -107,7 +134,8 @@ describe("POST /api/game/new", () => {
       gameId: "game-789",
     });
 
-    await POST(makeRequest(validBody));
+    const res = await POST(makeRequest(validBody));
+    await res.text(); // consume stream to ensure generation completes
 
     expect(mockedGenerateWorld).toHaveBeenCalledWith(
       validRequest,
@@ -117,6 +145,9 @@ describe("POST /api/game/new", () => {
         mode: "copilot",
         githubToken: "gh-token-abc",
       },
+      undefined,
+      undefined,
+      expect.any(Function),
     );
   });
 
@@ -150,13 +181,14 @@ describe("POST /api/game/new", () => {
       },
     };
 
-    await POST(
+    const res = await POST(
       makeRequest({
         request: validRequest,
         settings: byokSettings,
         byokApiKey: "sk-test-key",
       }),
     );
+    await res.text(); // consume stream to ensure generation completes
 
     expect(mockedGenerateWorld).toHaveBeenCalledWith(
       validRequest,
@@ -168,10 +200,13 @@ describe("POST /api/game/new", () => {
         byokBaseUrl: "https://api.openai.com/v1",
         byokApiKey: "sk-test-key",
       },
+      undefined,
+      undefined,
+      expect.any(Function),
     );
   });
 
-  it("returns 500 when generation fails", async () => {
+  it("streams SSE error event when generation fails", async () => {
     mockedAuth.mockResolvedValue(mockSession as never);
     mockedGenerateWorld.mockResolvedValue({
       success: false,
@@ -179,25 +214,30 @@ describe("POST /api/game/new", () => {
     });
 
     const res = await POST(makeRequest(validBody));
-    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
 
-    expect(res.status).toBe(500);
-    expect(body.error).toBe("AI generation failed");
+    const events = await readSSEEvents(res);
+    const errorEvent = events.find((e) => e.event === "error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent?.data.message).toBe("AI generation failed");
   });
 
-  it("returns JSON 500 when generateWorld throws unexpectedly", async () => {
+  it("streams SSE error event when generateWorld throws unexpectedly", async () => {
     mockedAuth.mockResolvedValue(mockSession as never);
     mockedGenerateWorld.mockRejectedValue(new Error("Copilot timeout"));
 
     const res = await POST(makeRequest(validBody));
-    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
 
-    expect(res.status).toBe(500);
-    expect(res.headers.get("content-type")).toContain("application/json");
-    expect(body.error).toContain("Copilot timeout");
+    const events = await readSSEEvents(res);
+    const errorEvent = events.find((e) => e.event === "error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent?.data.message as string).toContain("Copilot timeout");
   });
 
-  it("includes warnings in response", async () => {
+  it("includes warnings in SSE complete event", async () => {
     mockedAuth.mockResolvedValue(mockSession as never);
     mockedGenerateWorld.mockResolvedValue({
       success: true,
@@ -206,11 +246,11 @@ describe("POST /api/game/new", () => {
     });
 
     const res = await POST(makeRequest(validBody));
-    const body = await res.json();
-
-    expect(res.status).toBe(201);
-    expect(body.gameId).toBe("game-warn");
-    expect(body.warnings).toEqual([
+    const events = await readSSEEvents(res);
+    const completeEvent = events.find((e) => e.event === "complete");
+    expect(completeEvent).toBeDefined();
+    expect(completeEvent?.data.gameId).toBe("game-warn");
+    expect(completeEvent?.data.warnings).toEqual([
       "Room count below target",
       "Missing optional NPC",
     ]);
@@ -227,13 +267,17 @@ describe("POST /api/game/new", () => {
       gameId: "game-email",
     });
 
-    await POST(makeRequest(validBody));
+    const res = await POST(makeRequest(validBody));
+    await res.text();
 
     expect(mockedGenerateWorld).toHaveBeenCalledWith(
       validRequest,
       validSettings,
       "fallback@example.com",
       expect.any(Object),
+      undefined,
+      undefined,
+      expect.any(Function),
     );
   });
 });

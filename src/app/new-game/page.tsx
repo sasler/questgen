@@ -63,39 +63,48 @@ async function consumeSSEStream(
   let buffer = "";
   let gameId: string | null = null;
 
+  const processBlock = (block: string) => {
+    if (!block.trim()) return;
+    const lines = block.split("\n");
+    let eventName = "";
+    let dataStr = "";
+    for (const line of lines) {
+      if (line.startsWith("event: ")) eventName = line.slice(7).trim();
+      else if (line.startsWith("data: ")) dataStr = line.slice(6).trim();
+    }
+    if (!eventName || !dataStr) return;
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(dataStr) as Record<string, unknown>;
+    } catch {
+      return; // Skip malformed events
+    }
+
+    if (eventName === "progress" && typeof payload.message === "string") {
+      onProgress(payload.message);
+    } else if (eventName === "complete" && typeof payload.gameId === "string") {
+      gameId = payload.gameId;
+    } else if (eventName === "error" && typeof payload.message === "string") {
+      throw new Error(payload.message);
+    }
+  };
+
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      buffer += decoder.decode(); // flush remaining bytes
+      break;
+    }
     buffer += decoder.decode(value, { stream: true });
 
     const blocks = buffer.split("\n\n");
     buffer = blocks.pop() ?? "";
-
-    for (const block of blocks) {
-      if (!block.trim()) continue;
-      const lines = block.split("\n");
-      let eventName = "";
-      let dataStr = "";
-      for (const line of lines) {
-        if (line.startsWith("event: ")) eventName = line.slice(7).trim();
-        else if (line.startsWith("data: ")) dataStr = line.slice(6).trim();
-      }
-      if (!eventName || !dataStr) continue;
-
-      try {
-        const payload = JSON.parse(dataStr) as Record<string, unknown>;
-        if (eventName === "progress" && typeof payload.message === "string") {
-          onProgress(payload.message);
-        } else if (eventName === "complete" && typeof payload.gameId === "string") {
-          gameId = payload.gameId;
-        } else if (eventName === "error" && typeof payload.message === "string") {
-          throw new Error(payload.message);
-        }
-      } catch (e) {
-        if (e instanceof Error && eventName === "error") throw e;
-      }
-    }
+    for (const block of blocks) processBlock(block);
   }
+
+  // Process any final block not terminated by \n\n
+  if (buffer.trim()) processBlock(buffer);
 
   if (!gameId) throw new Error("Game creation failed: no game ID received");
   return gameId;

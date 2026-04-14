@@ -360,7 +360,7 @@ describe("generateWorld", () => {
       .calls as Array<[string, AICompletionOptions]>;
     expect(calls.length).toBeGreaterThan(0);
     for (const [, opts] of calls) {
-      expect(opts.timeout).toBe(120_000);
+      expect(opts.timeout).toBe(90_000);
     }
   });
 

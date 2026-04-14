@@ -313,7 +313,7 @@ async function requestGeneratedWorldContent(
       {
         model: settings.generationModel,
         systemMessage: WORLD_GENERATION_SYSTEM_PROMPT,
-        timeout: 120_000,
+        timeout: 90_000,
       },
       aiConfig,
     );

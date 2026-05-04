@@ -46,6 +46,14 @@ npx playwright test   # E2E tests (requires dev server running)
 - Parallelism is for independent tasks or investigations, not for skipping the per-task test -> implement -> smoke test -> review loop.
 - Invoke the `pr-workflow` skill only after every logical task is complete and reverified.
 
+## Repo-local skills
+
+This repository has local agent skills under `.github/skills`. At the start of any task, check this directory and read the relevant `SKILL.md` before planning or editing. Current skills include:
+
+- `pr-workflow` — use after all implementation, tests, docs, and review are complete to create the branch/commit/PR, push it, wait for Copilot review, triage comments, and address valid feedback.
+- `playwright-cli` — use when browser automation, interactive web testing, screenshots, tracing, request mocking, or Playwright-driven inspection would help.
+- `frontend-design` — use for frontend UI, page, component, layout, styling, or visual polish tasks.
+
 ## Architecture Principles
 
 - **AI is NOT the game engine** — deterministic code validates all state changes
@@ -55,8 +63,11 @@ npx playwright test   # E2E tests (requires dev server running)
 - **Movement and direct interactions stay deterministic** — turn parsing may assist, but final room traversal and interactable targeting must resolve in engine code against the current authoritative world state
 - **Local context only** — only current room + neighbors sent to AI per turn
 - **Settings in localStorage** — BYOK keys never sent to server-side storage
+- **BYOK is first-class** — free-provider presets live in `src/lib/byok-providers.ts`; settings should load models after key entry and route BYOK model discovery through `POST /api/models` with `x-byok-api-key`, never query-string keys.
+- **BYOK discovery must not become SSRF** — unauthenticated model discovery may only fetch known preset model endpoints. Custom OpenAI-compatible endpoints can be saved for runtime use, but do not server-fetch arbitrary custom URLs from `/api/models`.
+- **Guest BYOK saves use browser identity** — unauthenticated BYOK players are owned by `guest:<uuid>` from `x-questgen-guest-id`; authenticated sessions may also carry this guest owner so signing in does not strand guest saves.
 - **Split Redis keys** — world, player, history, settings, metadata stored separately
-- **Deployer vs player UX** — regular players should normally only see Connect GitHub Copilot; when deployment auth is missing, the landing page should still provide an actionable path to `/setup`
+- **Deployer vs player UX** — regular players can use BYOK without GitHub sign-in or connect GitHub Copilot; when deployment auth is missing, the landing page should still provide an actionable path to `/setup`
 - **Unified settings** — all client settings flow through `src/lib/settings.ts` (single source of truth)
 - **Copilot status checks stay lightweight** — do not boot the Copilot SDK or call `listModels()` from simple status endpoints; only actual model-loading paths should start the CLI/runtime
 - **Deployment auth env compatibility** — accept both `GITHUB_ID` / `GITHUB_SECRET` and `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`; docs should prefer the `GITHUB_CLIENT_*` names, and `NEXTAUTH_URL` must point at the QuestGen app URL, not Upstash
@@ -82,8 +93,8 @@ npx playwright test   # E2E tests (requires dev server running)
 
 - `/` — Landing page (auth-aware)
 - `/setup` — Owner-only deployment setup
-- `/settings` — AI provider config, model selection, connection status
-- `/guide` — How to get GitHub Copilot (free tier instructions)
+- `/settings` — AI provider config, BYOK presets, model selection, connection status
+- `/guide` — AI provider guide covering GitHub Copilot and BYOK
 - `/new-game` — New game creation wizard
 - `/game/[id]` — Main gameplay page
 - `/dashboard` — Saved games list

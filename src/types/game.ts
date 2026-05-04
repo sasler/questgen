@@ -134,6 +134,7 @@ export interface GameSettings {
   responseLength: "brief" | "moderate" | "detailed";
   provider: "copilot" | "byok";
   byokConfig?: {
+    providerId?: string;
     type: "openai" | "azure" | "anthropic";
     baseUrl: string;
   };

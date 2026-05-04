@@ -483,7 +483,10 @@ describe("Game Page", () => {
 
     expect(global.fetch).toHaveBeenNthCalledWith(2, "/api/game/game-123/intro", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-questgen-guest-id": "test-uuid-1234",
+      },
       body: JSON.stringify({}),
     });
   });
@@ -536,7 +539,10 @@ describe("Game Page", () => {
     expect(hintCall[0]).toBe("/api/game/game-123/hint");
     expect(hintCall[1]).toMatchObject({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-questgen-guest-id": "test-uuid-1234",
+      },
       body: JSON.stringify({}),
     });
   });
@@ -570,7 +576,10 @@ describe("Game Page", () => {
     expect(adminCall[0]).toBe("/api/game/game-123/admin");
     expect(adminCall[1]).toMatchObject({
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-questgen-guest-id": "test-uuid-1234",
+      },
       body: JSON.stringify({
         question: "why did the narrator say movement failed?",
       }),

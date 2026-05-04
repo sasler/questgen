@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SETTINGS_STORAGE_KEY } from "@/lib/settings";
+import { GUEST_ID_STORAGE_KEY } from "@/lib/guest";
 
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -22,6 +23,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
   localStorage.clear();
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(validSettings));
+  localStorage.setItem(GUEST_ID_STORAGE_KEY, "550e8400-e29b-41d4-a716-446655440000");
 });
 
 describe("NewGamePage", () => {
@@ -116,7 +118,10 @@ describe("NewGamePage", () => {
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith("/api/game/new", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-questgen-guest-id": "550e8400-e29b-41d4-a716-446655440000",
+        },
         body: JSON.stringify({
           request: {
             description:
@@ -128,6 +133,62 @@ describe("NewGamePage", () => {
         }),
       });
     });
+  });
+
+  it("blocks custom BYOK generation when model IDs are blank", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        provider: "byok",
+        byokProviderId: "custom-openai",
+        byokType: "openai",
+        byokBaseUrl: "https://custom.example/v1",
+        byokApiKey: "sk-custom",
+        generationModel: "",
+        gameplayModel: "   ",
+        responseLength: "moderate",
+      }),
+    );
+
+    render(<NewGamePage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/derelict space station/i),
+      "A mysterious abandoned laboratory deep underground",
+    );
+    await user.click(screen.getByRole("button", { name: /generate world/i }));
+
+    expect(screen.getByText(/custom byok model ids are required/i)).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks custom BYOK generation when the base URL is blank", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        provider: "byok",
+        byokProviderId: "custom-openai",
+        byokType: "openai",
+        byokBaseUrl: "   ",
+        byokApiKey: "sk-custom",
+        generationModel: "custom-large",
+        gameplayModel: "custom-fast",
+        responseLength: "moderate",
+      }),
+    );
+
+    render(<NewGamePage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/derelict space station/i),
+      "A mysterious abandoned laboratory deep underground",
+    );
+    await user.click(screen.getByRole("button", { name: /generate world/i }));
+
+    expect(screen.getByText(/custom byok base url is required/i)).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("redirects on success", async () => {

@@ -7,8 +7,12 @@ function isPublicPath(pathname: string): boolean {
   return (
     pathname === "/" ||
     pathname === "/auth/error" ||
+    pathname === "/dashboard" ||
+    pathname === "/new-game" ||
+    pathname === "/settings" ||
     pathname === "/guide" ||
     pathname === "/setup" ||
+    pathname.startsWith("/game/") ||
     pathname.startsWith("/api/setup") ||
     pathname.startsWith("/_next") ||
     pathname === "/favicon.ico"

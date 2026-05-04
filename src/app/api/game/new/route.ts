@@ -29,11 +29,6 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = getPrimarySessionOwnerId(session);
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   let body: unknown;
   try {
     body = await req.json();
@@ -53,6 +48,10 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { request, settings, byokApiKey } = parsed.data;
+  const userId = getPrimarySessionOwnerId(session);
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let aiConfig: AIProviderConfig;
   if (settings.provider === "copilot") {
@@ -73,6 +72,7 @@ export async function POST(req: Request): Promise<Response> {
   } else {
     aiConfig = {
       mode: "byok",
+      byokProviderId: settings.byokConfig?.providerId,
       byokType: settings.byokConfig?.type,
       byokBaseUrl: settings.byokConfig?.baseUrl,
       byokApiKey,

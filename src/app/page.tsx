@@ -40,13 +40,14 @@ export default async function Home() {
         </p>
         {!session && authConfigured && (
           <p className="text-[var(--terminal-dim)] text-xs text-center max-w-xl">
-            Players connect their own GitHub Copilot account. QuestGen does not use the site
-            owner&apos;s subscription on their behalf.
+            Players can connect GitHub Copilot or use BYOK with a browser-stored API key.
+            QuestGen does not use the site owner&apos;s subscription on their behalf.
           </p>
         )}
         {!session && !authConfigured && (
           <p className="text-[var(--terminal-amber)] text-xs text-center max-w-xl">
-            This copy of QuestGen is not ready for GitHub Copilot sign-in yet.
+            This copy of QuestGen is not ready for GitHub Copilot sign-in yet, but BYOK can still
+            be configured in Settings.
           </p>
         )}
 
@@ -60,19 +61,35 @@ export default async function Home() {
               ▸ Dashboard
             </Link>
           ) : authConfigured ? (
-            <Link
-              href="/api/auth/signin"
-              className="border border-[var(--terminal-green)] text-[var(--terminal-green)] px-6 py-3 text-center hover:bg-[var(--terminal-green)] hover:text-black transition-colors"
-            >
-              ▸ Connect GitHub Copilot
-            </Link>
+            <>
+              <Link
+                href="/settings?provider=byok"
+                className="border border-[var(--terminal-green)] text-[var(--terminal-green)] px-6 py-3 text-center hover:bg-[var(--terminal-green)] hover:text-black transition-colors"
+              >
+                ▸ Use BYOK
+              </Link>
+              <Link
+                href="/api/auth/signin"
+                className="border border-[var(--terminal-dim)] text-[var(--terminal-dim)] px-6 py-3 text-center hover:border-[var(--terminal-green)] hover:text-[var(--terminal-green)] transition-colors"
+              >
+                ▸ Connect GitHub Copilot
+              </Link>
+            </>
           ) : (
-            <Link
-              href="/setup"
-              className="border border-[var(--terminal-amber)] text-[var(--terminal-amber)] px-6 py-3 text-center hover:bg-[var(--terminal-amber)] hover:text-black transition-colors"
-            >
-              {showOwnerSetup ? "▸ Owner Setup" : "▸ Deployment setup required"}
-            </Link>
+            <>
+              <Link
+                href="/settings?provider=byok"
+                className="border border-[var(--terminal-green)] text-[var(--terminal-green)] px-6 py-3 text-center hover:bg-[var(--terminal-green)] hover:text-black transition-colors"
+              >
+                ▸ Use BYOK
+              </Link>
+              <Link
+                href="/setup"
+                className="border border-[var(--terminal-amber)] text-[var(--terminal-amber)] px-6 py-3 text-center hover:bg-[var(--terminal-amber)] hover:text-black transition-colors"
+              >
+                {showOwnerSetup ? "▸ Owner Setup" : "▸ Deployment setup required"}
+              </Link>
+            </>
           )}
           <Link
             href="/guide"
@@ -91,10 +108,10 @@ export default async function Home() {
             <li className="flex gap-3">
               <span className="text-[var(--terminal-amber)]">1.</span>
               <span>
-                <Link href="/guide" className="text-[var(--terminal-green)] underline">
-                  Get GitHub Copilot (free)
+                <Link href="/settings?provider=byok" className="text-[var(--terminal-green)] underline">
+                  Choose BYOK or GitHub Copilot
                 </Link>{" "}
-                — your ticket to the improbability drive
+                — pick the provider path that fits your account
               </span>
             </li>
             <li className="flex gap-3">

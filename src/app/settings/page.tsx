@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { PanelFrame } from "@/components/PanelFrame";
 import type { AIModelInfo } from "@/providers/types";
 import {
   BYOK_PROVIDER_CATALOG,
   findByokProvider,
+  resolveByokProviderDefaults,
   type ByokProviderId,
 } from "@/lib/byok-providers";
 import {
@@ -67,10 +68,43 @@ export default function SettingsPage() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [connectionLoading, setConnectionLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
+  const modelRequestSeq = useRef(0);
 
   useEffect(() => {
     const stored = loadSettings();
-    setSettings(stored);
+    const urlProvider = new URLSearchParams(window.location.search).get("provider");
+    if (urlProvider === "byok") {
+      const withByokDefaults = resolveByokProviderDefaults({
+        ...stored,
+        provider: "byok" as const,
+      });
+      const provider = findByokProvider(withByokDefaults.byokProviderId);
+      const fallbackGenerationModel =
+        provider?.fallbackModels.find((m) => m.recommended === "generation")?.id ??
+        provider?.fallbackModels[0]?.id ??
+        withByokDefaults.generationModel;
+      const fallbackGameplayModel =
+        provider?.fallbackModels.find((m) => m.recommended === "gameplay")?.id ??
+        provider?.fallbackModels[0]?.id ??
+        withByokDefaults.gameplayModel;
+      const hasDefaultCopilotModels =
+        stored.generationModel === DEFAULT_SETTINGS.generationModel &&
+        stored.gameplayModel === DEFAULT_SETTINGS.gameplayModel;
+      const shouldUseFallbackModels =
+        hasDefaultCopilotModels ||
+        !withByokDefaults.generationModel.trim() ||
+        !withByokDefaults.gameplayModel.trim();
+
+      setSettings({
+        ...withByokDefaults,
+        generationModel: shouldUseFallbackModels
+          ? fallbackGenerationModel
+          : withByokDefaults.generationModel,
+        gameplayModel: shouldUseFallbackModels ? fallbackGameplayModel : withByokDefaults.gameplayModel,
+      });
+    } else {
+      setSettings(stored);
+    }
     setMounted(true);
   }, []);
 
@@ -96,7 +130,10 @@ export default function SettingsPage() {
     fetchConnectionStatus();
   }, [mounted, fetchConnectionStatus]);
 
-  const fetchModels = useCallback(async (s: UserSettings) => {
+  const fetchModels = useCallback(async (s: UserSettings, requestSeq?: number) => {
+    const seq = requestSeq ?? ++modelRequestSeq.current;
+    const isCurrentRequest = () => seq === modelRequestSeq.current;
+
     setModelsLoading(true);
     setModelsError(null);
     try {
@@ -118,6 +155,8 @@ export default function SettingsPage() {
             });
       if (!res.ok) throw new Error("Failed to fetch models");
       const data = await res.json();
+      if (!isCurrentRequest()) return;
+
       const fetched: AIModelInfo[] = data.models ?? [];
       setModels(fetched);
       setModelsError(typeof data.error === "string" ? data.error : null);
@@ -135,30 +174,42 @@ export default function SettingsPage() {
         };
       });
     } catch {
+      if (!isCurrentRequest()) return;
       setModels([]);
       setModelsError("QuestGen couldn't load models right now.");
     } finally {
-      setModelsLoading(false);
+      if (isCurrentRequest()) {
+        setModelsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     if (!mounted) return;
+    const requestSeq = ++modelRequestSeq.current;
     if (settings.provider === "byok") {
       const provider = findByokProvider(settings.byokProviderId);
+      if (provider?.id === "custom-openai") {
+        setModels([]);
+        setModelsLoading(false);
+        setModelsError(null);
+        return;
+      }
+
       if (
         !settings.byokType ||
         !settings.byokBaseUrl ||
         (provider?.requiresApiKey !== false && !settings.byokApiKey)
       ) {
         setModels([]);
+        setModelsLoading(false);
         setModelsError("Enter an API key to load models from this BYOK provider.");
         return;
       }
     }
 
     const timeout = window.setTimeout(() => {
-      void fetchModels(settings);
+      void fetchModels(settings, requestSeq);
     }, settings.provider === "byok" ? 350 : 0);
 
     return () => window.clearTimeout(timeout);
@@ -183,20 +234,66 @@ export default function SettingsPage() {
   const selectByokProvider = (providerId: ByokProviderId) => {
     const provider = findByokProvider(providerId);
     if (!provider) return;
+    const fallbackGenerationModel =
+      provider.fallbackModels.find((m) => m.recommended === "generation")?.id ??
+      provider.fallbackModels[0]?.id ??
+      "";
+    const fallbackGameplayModel =
+      provider.fallbackModels.find((m) => m.recommended === "gameplay")?.id ??
+      provider.fallbackModels[0]?.id ??
+      "";
+    const switchingToCustom = provider.id === "custom-openai";
+
     setSaved(false);
-    setSettings((prev) => ({
-      ...prev,
-      provider: "byok",
-      byokProviderId: provider.id,
-      byokType: provider.type,
-      byokBaseUrl:
-        provider.id === "custom-openai" && prev.byokProviderId === "custom-openai"
-          ? (prev.byokBaseUrl ?? "")
-          : provider.baseUrl,
-    }));
+    setSettings((prev) => {
+      const needsPresetFallback =
+        !switchingToCustom &&
+        (prev.byokProviderId !== provider.id ||
+          !prev.generationModel.trim() ||
+          !prev.gameplayModel.trim());
+
+      return {
+        ...prev,
+        provider: "byok",
+        byokProviderId: provider.id,
+        byokType: provider.type,
+        byokBaseUrl:
+          provider.id === "custom-openai" && prev.byokProviderId === "custom-openai"
+            ? (prev.byokBaseUrl ?? "")
+            : provider.baseUrl,
+        generationModel: switchingToCustom
+          ? ""
+          : needsPresetFallback
+            ? fallbackGenerationModel
+            : prev.generationModel,
+        gameplayModel: switchingToCustom
+          ? ""
+          : needsPresetFallback
+            ? fallbackGameplayModel
+            : prev.gameplayModel,
+      };
+    });
   };
 
   const handleSave = () => {
+    if (
+      settings.provider === "byok" &&
+      settings.byokProviderId === "custom-openai" &&
+      !settings.byokBaseUrl?.trim()
+    ) {
+      setModelsError("Enter a custom base URL before saving.");
+      return;
+    }
+
+    if (!settings.generationModel.trim() || !settings.gameplayModel.trim()) {
+      setModelsError(
+        settings.provider === "byok" && settings.byokProviderId === "custom-openai"
+          ? "Enter both custom model IDs before saving."
+          : "Enter both model IDs before saving.",
+      );
+      return;
+    }
+
     saveSettings(settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -623,7 +720,50 @@ export default function SettingsPage() {
         </PanelFrame>
 
         <PanelFrame title="Model Selection">
-          {modelsLoading ? (
+          {settings.provider === "byok" && settings.byokProviderId === "custom-openai" ? (
+            <div className="space-y-4">
+              <p className="text-xs text-[#4a6741] leading-relaxed">
+                Custom endpoints are not queried for model discovery. Enter the model IDs your
+                endpoint accepts.
+              </p>
+              <div>
+                <label
+                  htmlFor="generation-model-custom"
+                  className="block text-xs text-[#ffb000] mb-1"
+                >
+                  World Generation Model ID
+                </label>
+                <input
+                  id="generation-model-custom"
+                  type="text"
+                  value={settings.generationModel}
+                  onChange={(e) => update("generationModel", e.target.value)}
+                  placeholder="model-for-world-generation"
+                  required
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="gameplay-model-custom"
+                  className="block text-xs text-[#ffb000] mb-1"
+                >
+                  Gameplay Model ID
+                </label>
+                <input
+                  id="gameplay-model-custom"
+                  type="text"
+                  value={settings.gameplayModel}
+                  onChange={(e) => update("gameplayModel", e.target.value)}
+                  placeholder="model-for-gameplay"
+                  required
+                  className={inputClass}
+                />
+              </div>
+              {modelsError && <p className="text-[#ff4444] text-xs">{modelsError}</p>}
+            </div>
+          ) : modelsLoading ? (
             <p className="text-[#4a6741] animate-pulse">Loading models…</p>
           ) : models.length === 0 ? (
             <div className="space-y-3">

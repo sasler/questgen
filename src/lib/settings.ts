@@ -31,17 +31,24 @@ export const DEFAULT_SETTINGS: UserSettings = {
 
 function normalizeSettings(raw: Partial<UserSettings>): UserSettings {
   const merged: UserSettings = { ...DEFAULT_SETTINGS, ...raw };
+  const baseUrlProvider = raw.byokBaseUrl ? findByokProviderByBaseUrl(raw.byokBaseUrl) : undefined;
+  const customBaseUrl = Boolean(raw.byokBaseUrl && !baseUrlProvider);
   const selectedProvider =
+    (customBaseUrl ? findByokProvider("custom-openai") : undefined) ??
+    baseUrlProvider ??
     (raw.byokProviderId ? findByokProvider(raw.byokProviderId) : undefined) ??
-    findByokProviderByBaseUrl(raw.byokBaseUrl) ??
-    findByokProvider(merged.byokProviderId);
+    findByokProvider(customBaseUrl ? "custom-openai" : merged.byokProviderId);
 
   if (selectedProvider) {
+    const hadStalePresetForCustomBaseUrl = customBaseUrl && raw.byokProviderId !== "custom-openai";
+
     return {
       ...merged,
       byokProviderId: selectedProvider.id,
       byokType: merged.byokType ?? selectedProvider.type,
       byokBaseUrl: merged.byokBaseUrl || selectedProvider.baseUrl,
+      generationModel: hadStalePresetForCustomBaseUrl ? "" : merged.generationModel,
+      gameplayModel: hadStalePresetForCustomBaseUrl ? "" : merged.gameplayModel,
     };
   }
 

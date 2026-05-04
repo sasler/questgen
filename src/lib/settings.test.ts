@@ -121,4 +121,72 @@ describe("settings", () => {
     expect(result.byokType).toBe("openai");
     expect(result.byokBaseUrl).toBe("https://api.groq.com/openai/v1");
   });
+
+  it("migrates legacy BYOK settings with unknown base URLs to custom OpenAI-compatible", () => {
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokType: "openai",
+      byokBaseUrl: "https://llm.example.com/v1",
+      byokApiKey: "custom-key",
+    });
+
+    const result = loadSettings();
+
+    expect(result.byokProviderId).toBe("custom-openai");
+    expect(result.byokType).toBe("openai");
+    expect(result.byokBaseUrl).toBe("https://llm.example.com/v1");
+  });
+
+  it("clears stale preset model IDs when migrating unknown legacy BYOK base URLs without a preset id", () => {
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokType: "openai",
+      byokBaseUrl: "https://llm.example.com/v1",
+      byokApiKey: "custom-key",
+      generationModel: "openrouter/free",
+      gameplayModel: "openrouter/free",
+    });
+
+    const result = loadSettings();
+
+    expect(result.byokProviderId).toBe("custom-openai");
+    expect(result.generationModel).toBe("");
+    expect(result.gameplayModel).toBe("");
+  });
+
+  it("migrates unknown legacy BYOK base URLs even when Copilot was selected", () => {
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "copilot",
+      byokType: "openai",
+      byokBaseUrl: "https://llm.example.com/v1",
+      byokApiKey: "custom-key",
+    });
+
+    const result = loadSettings();
+
+    expect(result.provider).toBe("copilot");
+    expect(result.byokProviderId).toBe("custom-openai");
+    expect(result.byokType).toBe("openai");
+    expect(result.byokBaseUrl).toBe("https://llm.example.com/v1");
+  });
+
+  it("migrates unknown legacy BYOK base URLs even when a stale preset id was saved", () => {
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokProviderId: "openrouter",
+      byokType: "openai",
+      byokBaseUrl: "https://llm.example.com/v1",
+      byokApiKey: "custom-key",
+      generationModel: "openrouter/free",
+      gameplayModel: "openrouter/free",
+    });
+
+    const result = loadSettings();
+
+    expect(result.byokProviderId).toBe("custom-openai");
+    expect(result.byokType).toBe("openai");
+    expect(result.byokBaseUrl).toBe("https://llm.example.com/v1");
+    expect(result.generationModel).toBe("");
+    expect(result.gameplayModel).toBe("");
+  });
 });

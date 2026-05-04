@@ -153,6 +153,23 @@ export default function NewGamePage() {
 
       try {
         const settings = loadSettings();
+        if (
+          settings.provider === "byok" &&
+          settings.byokProviderId === "custom-openai" &&
+          !settings.byokBaseUrl?.trim()
+        ) {
+          setValidationError("Custom BYOK base URL is required. Add it in Settings first.");
+          return;
+        }
+
+        if (
+          settings.provider === "byok" &&
+          settings.byokProviderId === "custom-openai" &&
+          (!settings.generationModel.trim() || !settings.gameplayModel.trim())
+        ) {
+          setValidationError("Custom BYOK model IDs are required. Add them in Settings first.");
+          return;
+        }
 
         const request: GameGenerationRequest = {
           description: description.trim(),

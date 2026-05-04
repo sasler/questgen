@@ -63,7 +63,7 @@ export default async function Home() {
           ) : authConfigured ? (
             <>
               <Link
-                href="/settings"
+                href="/settings?provider=byok"
                 className="border border-[var(--terminal-green)] text-[var(--terminal-green)] px-6 py-3 text-center hover:bg-[var(--terminal-green)] hover:text-black transition-colors"
               >
                 ▸ Use BYOK
@@ -78,7 +78,7 @@ export default async function Home() {
           ) : (
             <>
               <Link
-                href="/settings"
+                href="/settings?provider=byok"
                 className="border border-[var(--terminal-green)] text-[var(--terminal-green)] px-6 py-3 text-center hover:bg-[var(--terminal-green)] hover:text-black transition-colors"
               >
                 ▸ Use BYOK
@@ -108,7 +108,7 @@ export default async function Home() {
             <li className="flex gap-3">
               <span className="text-[var(--terminal-amber)]">1.</span>
               <span>
-                <Link href="/settings" className="text-[var(--terminal-green)] underline">
+                <Link href="/settings?provider=byok" className="text-[var(--terminal-green)] underline">
                   Choose BYOK or GitHub Copilot
                 </Link>{" "}
                 — pick the provider path that fits your account

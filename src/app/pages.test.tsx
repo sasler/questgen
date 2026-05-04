@@ -51,6 +51,10 @@ describe("Landing Page", () => {
     render(jsx);
     const signInLink = screen.getByRole("link", { name: /connect github copilot/i });
     expect(signInLink).toHaveAttribute("href", "/api/auth/signin");
+    expect(screen.getByRole("link", { name: /use byok/i })).toHaveAttribute(
+      "href",
+      "/settings?provider=byok",
+    );
   });
 
   it("shows owner setup link instead of sign-in when GitHub auth is not configured", async () => {
@@ -62,6 +66,10 @@ describe("Landing Page", () => {
 
     expect(screen.queryByRole("link", { name: /sign in/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /owner setup/i })).toHaveAttribute("href", "/setup");
+    expect(screen.getByRole("link", { name: /use byok/i })).toHaveAttribute(
+      "href",
+      "/settings?provider=byok",
+    );
   });
 
   it("shows dashboard link when authenticated", async () => {

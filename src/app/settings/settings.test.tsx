@@ -190,6 +190,7 @@ let storage: Record<string, string> = {};
 
 beforeEach(() => {
   storage = {};
+  window.history.pushState({}, "", "/settings");
   vi.stubGlobal("fetch", createMockFetch());
   vi.stubGlobal("localStorage", {
     getItem: vi.fn((key: string) => storage[key] ?? null),
@@ -215,6 +216,121 @@ describe("SettingsPage", () => {
 
     expect(await screen.findByLabelText(/github copilot/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/bring your own key/i)).toBeInTheDocument();
+  });
+
+  it("opens BYOK settings directly from the provider query parameter", async () => {
+    window.history.pushState({}, "", "/settings?provider=byok");
+
+    render(<SettingsPage />);
+
+    expect(await screen.findByLabelText(/bring your own key/i)).toBeChecked();
+    expect(screen.getByLabelText(/api key/i)).toBeInTheDocument();
+  });
+
+  it("initializes BYOK fallback model IDs when opened from the provider query parameter", async () => {
+    window.history.pushState({}, "", "/settings?provider=byok");
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await screen.findByLabelText(/bring your own key/i);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const savedJson = (localStorage.setItem as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: string[]) => c[0] === SETTINGS_STORAGE_KEY,
+    )![1];
+    const saved = JSON.parse(savedJson);
+
+    expect(saved.provider).toBe("byok");
+    expect(saved.byokProviderId).toBe("openrouter");
+    expect(saved.generationModel).toBe("openrouter/free");
+    expect(saved.gameplayModel).toBe("openrouter/free");
+  });
+
+  it("preserves saved BYOK preset model IDs when opened from the provider query parameter", async () => {
+    window.history.pushState({}, "", "/settings?provider=byok");
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokProviderId: "openrouter",
+      byokType: "openai",
+      byokBaseUrl: "https://openrouter.ai/api/v1",
+      byokApiKey: "sk-or-test",
+      generationModel: "google/gemini-2.5-flash",
+      gameplayModel: "meta-llama/llama-3.3-70b-instruct:free",
+      responseLength: "moderate",
+    });
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await screen.findByLabelText(/bring your own key/i);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const savedJson = (localStorage.setItem as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: string[]) => c[0] === SETTINGS_STORAGE_KEY,
+    )![1];
+    const saved = JSON.parse(savedJson);
+
+    expect(saved.generationModel).toBe("google/gemini-2.5-flash");
+    expect(saved.gameplayModel).toBe("meta-llama/llama-3.3-70b-instruct:free");
+  });
+
+  it("preserves saved BYOK model IDs from a Copilot-selected profile on the provider query parameter", async () => {
+    window.history.pushState({}, "", "/settings?provider=byok");
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "copilot",
+      byokProviderId: "groq",
+      byokType: "openai",
+      byokBaseUrl: "https://api.groq.com/openai/v1",
+      byokApiKey: "gsk-test",
+      generationModel: "openai/gpt-oss-120b",
+      gameplayModel: "openai/gpt-oss-20b",
+      responseLength: "moderate",
+    });
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await screen.findByLabelText(/bring your own key/i);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const savedJson = (localStorage.setItem as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: string[]) => c[0] === SETTINGS_STORAGE_KEY,
+    )![1];
+    const saved = JSON.parse(savedJson);
+
+    expect(saved.provider).toBe("byok");
+    expect(saved.byokProviderId).toBe("groq");
+    expect(saved.generationModel).toBe("openai/gpt-oss-120b");
+    expect(saved.gameplayModel).toBe("openai/gpt-oss-20b");
+  });
+
+  it("replaces default Copilot model IDs for non-default BYOK providers on the provider query parameter", async () => {
+    window.history.pushState({}, "", "/settings?provider=byok");
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "copilot",
+      byokProviderId: "groq",
+      byokType: "openai",
+      byokBaseUrl: "https://api.groq.com/openai/v1",
+      generationModel: "gpt-4.1",
+      gameplayModel: "gpt-4.1",
+      responseLength: "moderate",
+    });
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await screen.findByLabelText(/bring your own key/i);
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const savedJson = (localStorage.setItem as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: string[]) => c[0] === SETTINGS_STORAGE_KEY,
+    )![1];
+    const saved = JSON.parse(savedJson);
+
+    expect(saved.byokProviderId).toBe("groq");
+    expect(saved.generationModel).toBe("openai/gpt-oss-120b");
+    expect(saved.gameplayModel).toBe("openai/gpt-oss-20b");
   });
 
   it("shows BYOK config fields when BYOK is selected", async () => {
@@ -305,6 +421,275 @@ describe("SettingsPage", () => {
       );
     });
     expect((await screen.findAllByText(/openrouter free router/i)).length).toBeGreaterThan(0);
+  });
+
+  it("lets custom BYOK users enter model IDs manually when discovery is unavailable", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/bring your own key/i));
+    await user.click(screen.getByLabelText(/custom openai-compatible/i));
+    await user.type(screen.getByLabelText(/base url/i), "https://custom.example/v1");
+
+    expect(screen.getByLabelText(/world generation model id/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/gameplay model id/i)).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/world generation model id/i));
+    await user.type(screen.getByLabelText(/world generation model id/i), "custom-large");
+    await user.clear(screen.getByLabelText(/gameplay model id/i));
+    await user.type(screen.getByLabelText(/gameplay model id/i), "custom-fast");
+
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const savedJson = (localStorage.setItem as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: string[]) => c[0] === SETTINGS_STORAGE_KEY,
+    )![1];
+    const saved = JSON.parse(savedJson);
+
+    expect(saved.byokProviderId).toBe("custom-openai");
+    expect(saved.generationModel).toBe("custom-large");
+    expect(saved.gameplayModel).toBe("custom-fast");
+  });
+
+  it("does not save custom BYOK settings with blank model IDs", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/bring your own key/i));
+    await user.click(screen.getByLabelText(/custom openai-compatible/i));
+    await user.type(screen.getByLabelText(/base url/i), "https://custom.example/v1");
+    await user.clear(screen.getByLabelText(/world generation model id/i));
+    await user.clear(screen.getByLabelText(/gameplay model id/i));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(
+      screen.getByText(/enter both custom model ids before saving/i),
+    ).toBeInTheDocument();
+    expect(localStorage.setItem).not.toHaveBeenCalledWith(
+      SETTINGS_STORAGE_KEY,
+      expect.any(String),
+    );
+  });
+
+  it("does not save custom BYOK settings with a blank base URL", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/bring your own key/i));
+    await user.click(screen.getByLabelText(/custom openai-compatible/i));
+    await user.clear(screen.getByLabelText(/base url/i));
+    await user.type(screen.getByLabelText(/world generation model id/i), "custom-large");
+    await user.type(screen.getByLabelText(/gameplay model id/i), "custom-fast");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    expect(screen.getByText(/enter a custom base url before saving/i)).toBeInTheDocument();
+    expect(localStorage.setItem).not.toHaveBeenCalledWith(
+      SETTINGS_STORAGE_KEY,
+      expect.any(String),
+    );
+  });
+
+  it("clears stale preset model IDs when switching to custom BYOK", async () => {
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokProviderId: "openrouter",
+      byokType: "openai",
+      byokBaseUrl: "https://openrouter.ai/api/v1",
+      byokApiKey: "sk-or-test",
+      generationModel: "openrouter/free",
+      gameplayModel: "openrouter/fast",
+      responseLength: "moderate",
+    });
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/custom openai-compatible/i));
+
+    expect(screen.getByLabelText(/world generation model id/i)).toHaveValue("");
+    expect(screen.getByLabelText(/gameplay model id/i)).toHaveValue("");
+  });
+
+  it("ignores stale preset model discovery after switching to custom BYOK", async () => {
+    let resolveModels: ((value: Response) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/copilot/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => connectedStatus,
+        });
+      }
+
+      return new Promise<Response>((resolve) => {
+        resolveModels = resolve;
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokProviderId: "openrouter",
+      byokType: "openai",
+      byokBaseUrl: "https://openrouter.ai/api/v1",
+      byokApiKey: "sk-or-test",
+      generationModel: "openrouter/free",
+      gameplayModel: "openrouter/free",
+      responseLength: "moderate",
+    });
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/models",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    await user.click(screen.getByLabelText(/custom openai-compatible/i));
+
+    resolveModels?.(
+      new Response(
+        JSON.stringify({
+          models: [{ id: "openrouter/stale", name: "Stale OpenRouter", provider: "openrouter" }],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/world generation model id/i)).toHaveValue("");
+      expect(screen.getByLabelText(/gameplay model id/i)).toHaveValue("");
+    });
+  });
+
+  it("stops loading when a newer BYOK state without an API key blocks discovery", async () => {
+    let resolveModels: ((value: Response) => void) | undefined;
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/copilot/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => connectedStatus,
+        });
+      }
+
+      return new Promise<Response>((resolve) => {
+        resolveModels = resolve;
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokProviderId: "openrouter",
+      byokType: "openai",
+      byokBaseUrl: "https://openrouter.ai/api/v1",
+      byokApiKey: "sk-or-test",
+      generationModel: "openrouter/free",
+      gameplayModel: "openrouter/free",
+      responseLength: "moderate",
+    });
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/models",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    await user.clear(screen.getByLabelText(/api key/i));
+
+    expect(
+      await screen.findByText(/enter an api key to load models from this byok provider/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/loading models/i)).not.toBeInTheDocument();
+
+    resolveModels?.(
+      new Response(JSON.stringify({ models: [{ id: "openrouter/stale", name: "Stale" }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+  });
+
+  it("restores preset fallback model IDs after switching from custom BYOK back to a preset", async () => {
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokProviderId: "openrouter",
+      byokType: "openai",
+      byokBaseUrl: "https://openrouter.ai/api/v1",
+      byokApiKey: "sk-or-test",
+      generationModel: "openrouter/free",
+      gameplayModel: "openrouter/fast",
+      responseLength: "moderate",
+    });
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/custom openai-compatible/i));
+    await user.click(screen.getByLabelText(/openrouter/i));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const savedJson = (localStorage.setItem as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: string[]) => c[0] === SETTINGS_STORAGE_KEY,
+    )![1];
+    const saved = JSON.parse(savedJson);
+
+    expect(saved.byokProviderId).toBe("openrouter");
+    expect(saved.generationModel).toBe("openrouter/free");
+    expect(saved.gameplayModel).toBe("openrouter/free");
+  });
+
+  it("restores preset fallback model IDs when switching between presets", async () => {
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokProviderId: "openrouter",
+      byokType: "openai",
+      byokBaseUrl: "https://openrouter.ai/api/v1",
+      byokApiKey: "sk-or-test",
+      generationModel: "openrouter/free",
+      gameplayModel: "openrouter/free",
+      responseLength: "moderate",
+    });
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/groq/i));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    const savedJson = (localStorage.setItem as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c: string[]) => c[0] === SETTINGS_STORAGE_KEY,
+    )![1];
+    const saved = JSON.parse(savedJson);
+
+    expect(saved.byokProviderId).toBe("groq");
+    expect(saved.generationModel).toBe("openai/gpt-oss-120b");
+    expect(saved.gameplayModel).toBe("openai/gpt-oss-20b");
+  });
+
+  it("does not send custom BYOK keys for model discovery", async () => {
+    const fetchMock = createMockFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/bring your own key/i));
+    await user.click(screen.getByLabelText(/custom openai-compatible/i));
+    await user.clear(screen.getByLabelText(/base url/i));
+    await user.type(screen.getByLabelText(/base url/i), "https://custom.example/v1");
+    await user.type(screen.getByLabelText(/api key/i), "sk-custom-test");
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const customModelDiscoveryCalls = fetchMock.mock.calls.filter(([url, init]) => {
+      if (url !== "/api/models" || init?.method !== "POST") return false;
+      return String(init.body).includes('"byokProviderId":"custom-openai"');
+    });
+
+    expect(customModelDiscoveryCalls).toHaveLength(0);
   });
 
   it("hides BYOK fields when Copilot is selected", async () => {

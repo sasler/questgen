@@ -158,12 +158,12 @@ export const GameSizeSchema = z.enum(["small", "medium", "large", "epic"]);
 export const ByokConfigSchema = z.object({
   providerId: z.string().optional(),
   type: z.enum(["openai", "azure", "anthropic"]),
-  baseUrl: z.string(),
+  baseUrl: z.string().trim().min(1),
 });
 
 export const GameSettingsSchema = z.object({
-  generationModel: z.string(),
-  gameplayModel: z.string(),
+  generationModel: z.string().trim().min(1),
+  gameplayModel: z.string().trim().min(1),
   responseLength: z.enum(["brief", "moderate", "detailed"]),
   provider: z.enum(["copilot", "byok"]),
   byokConfig: ByokConfigSchema.optional(),

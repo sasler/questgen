@@ -475,6 +475,26 @@ describe("GameSettingsSchema", () => {
       GameSettingsSchema.safeParse(validGameSettings({ responseLength: "verbose" })).success,
     ).toBe(false);
   });
+
+  it("rejects blank model IDs", () => {
+    expect(GameSettingsSchema.safeParse(validGameSettings({ generationModel: "" })).success).toBe(
+      false,
+    );
+    expect(GameSettingsSchema.safeParse(validGameSettings({ gameplayModel: "   " })).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects blank BYOK base URLs", () => {
+    expect(
+      GameSettingsSchema.safeParse(
+        validGameSettings({
+          provider: "byok",
+          byokConfig: { type: "openai", baseUrl: "   " },
+        }),
+      ).success,
+    ).toBe(false);
+  });
 });
 
 // ── GameMetadata ────────────────────────────────────────────────────

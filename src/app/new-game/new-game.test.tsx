@@ -135,6 +135,62 @@ describe("NewGamePage", () => {
     });
   });
 
+  it("blocks custom BYOK generation when model IDs are blank", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        provider: "byok",
+        byokProviderId: "custom-openai",
+        byokType: "openai",
+        byokBaseUrl: "https://custom.example/v1",
+        byokApiKey: "sk-custom",
+        generationModel: "",
+        gameplayModel: "   ",
+        responseLength: "moderate",
+      }),
+    );
+
+    render(<NewGamePage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/derelict space station/i),
+      "A mysterious abandoned laboratory deep underground",
+    );
+    await user.click(screen.getByRole("button", { name: /generate world/i }));
+
+    expect(screen.getByText(/custom byok model ids are required/i)).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("blocks custom BYOK generation when the base URL is blank", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem(
+      SETTINGS_STORAGE_KEY,
+      JSON.stringify({
+        provider: "byok",
+        byokProviderId: "custom-openai",
+        byokType: "openai",
+        byokBaseUrl: "   ",
+        byokApiKey: "sk-custom",
+        generationModel: "custom-large",
+        gameplayModel: "custom-fast",
+        responseLength: "moderate",
+      }),
+    );
+
+    render(<NewGamePage />);
+
+    await user.type(
+      screen.getByPlaceholderText(/derelict space station/i),
+      "A mysterious abandoned laboratory deep underground",
+    );
+    await user.click(screen.getByRole("button", { name: /generate world/i }));
+
+    expect(screen.getByText(/custom byok base url is required/i)).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("redirects on success", async () => {
     const user = userEvent.setup();
     vi.mocked(fetch).mockResolvedValue(

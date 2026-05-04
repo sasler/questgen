@@ -253,6 +253,47 @@ describe("POST /api/game/new", () => {
     );
   });
 
+  it("uses account ownership for signed-in BYOK game creation when a guest header is present", async () => {
+    mockedAuth.mockResolvedValue(mockSession as never);
+    mockedGenerateWorld.mockResolvedValue({
+      success: true,
+      gameId: "signed-in-guest-game",
+    });
+
+    const byokSettings = {
+      ...validSettings,
+      provider: "byok" as const,
+      byokConfig: {
+        providerId: "openrouter",
+        type: "openai" as const,
+        baseUrl: "https://openrouter.ai/api/v1",
+      },
+    };
+
+    const res = await POST(
+      makeRequest(
+        {
+          request: validRequest,
+          settings: byokSettings,
+          byokApiKey: "sk-test-key",
+        },
+        { "x-questgen-guest-id": "550e8400-e29b-41d4-a716-446655440000" },
+      ),
+    );
+    await res.text();
+
+    expect(res.status).toBe(200);
+    expect(mockedGenerateWorld).toHaveBeenCalledWith(
+      validRequest,
+      byokSettings,
+      "user-123",
+      expect.objectContaining({ mode: "byok" }),
+      undefined,
+      undefined,
+      expect.any(Function),
+    );
+  });
+
   it("streams SSE error event when generation fails", async () => {
     mockedAuth.mockResolvedValue(mockSession as never);
     mockedGenerateWorld.mockResolvedValue({

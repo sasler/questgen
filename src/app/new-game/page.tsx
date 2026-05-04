@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { PanelFrame } from "@/components";
 import { loadSettings, toGameSettings } from "@/lib/settings";
+import { getGuestRequestHeaders } from "@/lib/guest";
 import type { GameSize, GameGenerationRequest } from "@/types";
 
 const SIZE_OPTIONS: {
@@ -167,7 +168,7 @@ export default function NewGamePage() {
 
         const res = await fetch("/api/game/new", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...getGuestRequestHeaders() },
           body: JSON.stringify(body),
         });
 

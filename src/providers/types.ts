@@ -3,6 +3,7 @@ export interface AIProviderConfig {
   // For copilot mode:
   githubToken?: string;
   // For BYOK mode:
+  byokProviderId?: string;
   byokType?: "openai" | "azure" | "anthropic";
   byokBaseUrl?: string;
   byokApiKey?: string;

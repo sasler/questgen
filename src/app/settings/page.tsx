@@ -5,6 +5,11 @@ import Link from "next/link";
 import { PanelFrame } from "@/components/PanelFrame";
 import type { AIModelInfo } from "@/providers/types";
 import {
+  BYOK_PROVIDER_CATALOG,
+  findByokProvider,
+  type ByokProviderId,
+} from "@/lib/byok-providers";
+import {
   type UserSettings,
   DEFAULT_SETTINGS,
   loadSettings,
@@ -95,11 +100,22 @@ export default function SettingsPage() {
     setModelsLoading(true);
     setModelsError(null);
     try {
-      const params = new URLSearchParams({ provider: s.provider });
-      if (s.provider === "byok" && s.byokType) {
-        params.set("byokType", s.byokType);
-      }
-      const res = await fetch(`/api/models?${params.toString()}`);
+      const res =
+        s.provider === "copilot"
+          ? await fetch("/api/models?provider=copilot")
+          : await fetch("/api/models", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(s.byokApiKey ? { "x-byok-api-key": s.byokApiKey } : {}),
+              },
+              body: JSON.stringify({
+                provider: "byok",
+                byokProviderId: s.byokProviderId,
+                byokType: s.byokType,
+                byokBaseUrl: s.byokBaseUrl,
+              }),
+            });
       if (!res.ok) throw new Error("Failed to fetch models");
       const data = await res.json();
       const fetched: AIModelInfo[] = data.models ?? [];
@@ -128,13 +144,56 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!mounted) return;
-    fetchModels(settings);
+    if (settings.provider === "byok") {
+      const provider = findByokProvider(settings.byokProviderId);
+      if (
+        !settings.byokType ||
+        !settings.byokBaseUrl ||
+        (provider?.requiresApiKey !== false && !settings.byokApiKey)
+      ) {
+        setModels([]);
+        setModelsError("Enter an API key to load models from this BYOK provider.");
+        return;
+      }
+    }
+
+    const timeout = window.setTimeout(() => {
+      void fetchModels(settings);
+    }, settings.provider === "byok" ? 350 : 0);
+
+    return () => window.clearTimeout(timeout);
+    // settings is intentionally expanded below so response-length/model-select edits do not
+    // trigger provider model discovery.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, settings.provider, settings.byokType, fetchModels]);
+  }, [
+    mounted,
+    settings.provider,
+    settings.byokProviderId,
+    settings.byokType,
+    settings.byokBaseUrl,
+    settings.byokApiKey,
+    fetchModels,
+  ]);
 
   const update = <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     setSaved(false);
     setSettings((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const selectByokProvider = (providerId: ByokProviderId) => {
+    const provider = findByokProvider(providerId);
+    if (!provider) return;
+    setSaved(false);
+    setSettings((prev) => ({
+      ...prev,
+      provider: "byok",
+      byokProviderId: provider.id,
+      byokType: provider.type,
+      byokBaseUrl:
+        provider.id === "custom-openai" && prev.byokProviderId === "custom-openai"
+          ? (prev.byokBaseUrl ?? "")
+          : provider.baseUrl,
+    }));
   };
 
   const handleSave = () => {
@@ -151,6 +210,7 @@ export default function SettingsPage() {
 
   const copilotSignInHref = "/api/auth/signin?callbackUrl=%2Fsettings";
   const copilotSignOutHref = "/api/auth/signout?callbackUrl=%2Fsettings";
+  const selectedByokProvider = findByokProvider(settings.byokProviderId);
   const copilotIssueType =
     settings.provider === "copilot" ? classifyCopilotError(modelsError) : "unknown";
   const showCopilotRuntimeIssue =
@@ -453,25 +513,79 @@ export default function SettingsPage() {
           </fieldset>
 
           {settings.provider === "byok" && (
-            <div className="mt-4 ml-6 space-y-3 border-l border-[#1a3a1a] pl-4">
+            <div className="mt-4 ml-6 space-y-4 border-l border-[#1a3a1a] pl-4">
               <fieldset className="space-y-2">
-                <legend className="text-[#ffb000] text-xs mb-1">Provider Type</legend>
-                {(["openai", "anthropic", "azure"] as const).map((t) => (
-                  <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
-                    <input
-                      type="radio"
-                      name="byokType"
-                      value={t}
-                      checked={settings.byokType === t}
-                      onChange={() => update("byokType", t)}
-                      className="accent-[#00ff41]"
-                    />
-                    <span className="capitalize">
-                      {t === "openai" ? "OpenAI" : t === "anthropic" ? "Anthropic" : "Azure"}
-                    </span>
-                  </label>
-                ))}
+                <legend className="text-[#ffb000] text-xs mb-1">Free BYOK Presets</legend>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {BYOK_PROVIDER_CATALOG.map((provider) => (
+                    <label
+                      key={provider.id}
+                      className="block border border-[#1a3a1a] bg-[#0a0a0a] p-3 cursor-pointer hover:border-[#4a6741]"
+                    >
+                      <span className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          name="byokProviderId"
+                          value={provider.id}
+                          checked={settings.byokProviderId === provider.id}
+                          onChange={() => selectByokProvider(provider.id)}
+                          className="accent-[#00ff41] mt-1"
+                        />
+                        <span>
+                          <span className="block text-sm font-bold text-[#00ff41]">
+                            {provider.label}
+                          </span>
+                          <span className="block text-xs text-[#4a6741] leading-relaxed">
+                            {provider.description}
+                          </span>
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </fieldset>
+
+              {selectedByokProvider && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <a
+                    href={selectedByokProvider.keyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1 text-xs border border-[#ffb000] text-[#ffb000] hover:bg-[#ffb000] hover:text-[#0a0a0a] transition-colors"
+                  >
+                    {selectedByokProvider.keyLinkLabel}
+                  </a>
+                  <span className="text-xs text-[#4a6741]">
+                    Limits and free access can change at the provider.
+                  </span>
+                </div>
+              )}
+
+              {settings.byokProviderId === "custom-openai" ? (
+                <fieldset className="space-y-2">
+                  <legend className="text-[#ffb000] text-xs mb-1">SDK Provider Type</legend>
+                  {(["openai", "anthropic", "azure"] as const).map((t) => (
+                    <label key={t} className="flex items-center gap-2 cursor-pointer text-sm">
+                      <input
+                        type="radio"
+                        name="byokType"
+                        value={t}
+                        checked={settings.byokType === t}
+                        onChange={() => update("byokType", t)}
+                        className="accent-[#00ff41]"
+                      />
+                      <span className="capitalize">
+                        {t === "openai" ? "OpenAI" : t === "anthropic" ? "Anthropic" : "Azure"}
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              ) : (
+                <p className="text-xs text-[#4a6741]">
+                  SDK provider type:{" "}
+                  <span className="text-[#00ff41]">{settings.byokType ?? "openai"}</span>
+                </p>
+              )}
 
               <div>
                 <label htmlFor="byok-base-url" className="block text-xs text-[#ffb000] mb-1">
@@ -496,12 +610,12 @@ export default function SettingsPage() {
                   type="password"
                   value={settings.byokApiKey ?? ""}
                   onChange={(e) => update("byokApiKey", e.target.value)}
-                  placeholder="sk-..."
+                  placeholder="Paste your provider API key"
                   className={inputClass}
                 />
                 <p className="text-[#4a6741] text-xs mt-1">
-                  Stored in your browser only. The key is only forwarded when you start or
-                  continue a game.
+                  Stored in your browser only. The key is forwarded to QuestGen only for model
+                  loading and when you start or continue a BYOK game.
                 </p>
               </div>
             </div>

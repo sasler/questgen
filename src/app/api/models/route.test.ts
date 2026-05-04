@@ -14,7 +14,7 @@ vi.mock("@/lib/models", () => ({
 
 import { auth } from "@/lib/auth";
 import { listAvailableModels, getRecommendedModels } from "@/lib/models";
-import { GET } from "./route";
+import { GET, POST } from "./route";
 
 const mockAuth = vi.mocked(auth);
 const mockListModels = vi.mocked(listAvailableModels);
@@ -28,6 +28,17 @@ function makeRequest(params: Record<string, string> = {}, headers: Record<string
     url.searchParams.set(key, value);
   }
   return new NextRequest(url, { headers });
+}
+
+function makePostRequest(body: unknown, headers: Record<string, string> = {}): NextRequest {
+  return new NextRequest(new URL("/api/models", baseUrl), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
 }
 
 const sampleModels: AIModelInfo[] = [
@@ -89,22 +100,33 @@ describe("GET /api/models", () => {
     expect(body.recommended.gameplay.id).toBe("gpt-4o-mini");
   });
 
-  it("returns models for byok mode with correct type", async () => {
-    const byokModels: AIModelInfo[] = [
-      { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4", provider: "anthropic", recommended: "generation" },
-    ];
-    const byokRecommended = { generation: byokModels[0], gameplay: null };
-
+  it("rejects BYOK model discovery through GET", async () => {
     mockAuth.mockResolvedValue({ accessToken: "tok" } as never);
+
+    const response = await GET(makeRequest({ provider: "byok", byokType: "openai" }));
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error).toMatch(/post/i);
+    expect(mockListModels).not.toHaveBeenCalled();
+  });
+
+  it("returns models for BYOK mode through POST without GitHub auth", async () => {
+    const byokModels: AIModelInfo[] = [
+      { id: "openrouter/free", name: "OpenRouter Free Router", provider: "openrouter", recommended: "gameplay" },
+    ];
+    const byokRecommended = { generation: null, gameplay: byokModels[0] };
+
+    mockAuth.mockResolvedValue(null as never);
     mockListModels.mockResolvedValue({ models: byokModels });
     mockGetRecommended.mockReturnValue(byokRecommended);
 
-    const response = await GET(makeRequest({
+    const response = await POST(makePostRequest({
       provider: "byok",
-      byokType: "anthropic",
-      byokBaseUrl: "https://api.anthropic.com",
-      byokApiKey: "sk-test",
-    }));
+      byokProviderId: "openrouter",
+      byokType: "openai",
+      byokBaseUrl: "https://openrouter.ai/api/v1",
+    }, { "x-byok-api-key": "sk-test" }));
 
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -112,8 +134,9 @@ describe("GET /api/models", () => {
     expect(mockListModels).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "byok",
-        byokType: "anthropic",
-        byokBaseUrl: "https://api.anthropic.com",
+        byokProviderId: "openrouter",
+        byokType: "openai",
+        byokBaseUrl: "https://openrouter.ai/api/v1",
         byokApiKey: "sk-test",
       }),
     );
@@ -134,14 +157,14 @@ describe("GET /api/models", () => {
     );
   });
 
-  it("reads byokApiKey from x-byok-api-key header", async () => {
-    mockAuth.mockResolvedValue({ accessToken: "tok" } as never);
+  it("reads byokApiKey from x-byok-api-key header only", async () => {
+    mockAuth.mockResolvedValue(null as never);
     mockListModels.mockResolvedValue({ models: [] });
     mockGetRecommended.mockReturnValue({ generation: null, gameplay: null });
 
-    await GET(
-      makeRequest(
-        { provider: "byok", byokType: "openai" },
+    await POST(
+      makePostRequest(
+        { provider: "byok", byokProviderId: "openrouter", byokType: "openai" },
         { "x-byok-api-key": "sk-from-header" },
       ),
     );
@@ -153,21 +176,26 @@ describe("GET /api/models", () => {
     );
   });
 
-  it("prefers query param byokApiKey over header", async () => {
-    mockAuth.mockResolvedValue({ accessToken: "tok" } as never);
+  it("does not accept BYOK API keys in the request body", async () => {
+    mockAuth.mockResolvedValue(null as never);
     mockListModels.mockResolvedValue({ models: [] });
     mockGetRecommended.mockReturnValue({ generation: null, gameplay: null });
 
-    await GET(
-      makeRequest(
-        { provider: "byok", byokType: "openai", byokApiKey: "sk-from-query" },
+    await POST(
+      makePostRequest(
+        {
+          provider: "byok",
+          byokProviderId: "openrouter",
+          byokType: "openai",
+          byokApiKey: "sk-from-body",
+        },
         { "x-byok-api-key": "sk-from-header" },
       ),
     );
 
     expect(mockListModels).toHaveBeenCalledWith(
       expect.objectContaining({
-        byokApiKey: "sk-from-query",
+        byokApiKey: "sk-from-header",
       }),
     );
   });

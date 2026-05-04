@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SETTINGS_STORAGE_KEY } from "@/lib/settings";
+import { GUEST_ID_STORAGE_KEY } from "@/lib/guest";
 
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -22,6 +23,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn());
   localStorage.clear();
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(validSettings));
+  localStorage.setItem(GUEST_ID_STORAGE_KEY, "550e8400-e29b-41d4-a716-446655440000");
 });
 
 describe("NewGamePage", () => {
@@ -116,7 +118,10 @@ describe("NewGamePage", () => {
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith("/api/game/new", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-questgen-guest-id": "550e8400-e29b-41d4-a716-446655440000",
+        },
         body: JSON.stringify({
           request: {
             description:

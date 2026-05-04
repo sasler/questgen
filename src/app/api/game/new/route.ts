@@ -73,6 +73,7 @@ export async function POST(req: Request): Promise<Response> {
   } else {
     aiConfig = {
       mode: "byok",
+      byokProviderId: settings.byokConfig?.providerId,
       byokType: settings.byokConfig?.type,
       byokBaseUrl: settings.byokConfig?.baseUrl,
       byokApiKey,

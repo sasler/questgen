@@ -33,7 +33,7 @@ function getConfigKey(config: AIProviderConfig): string {
   if (config.mode === "copilot") {
     return `copilot:${config.githubToken ?? ""}`;
   }
-  return `byok:${config.byokType ?? ""}:${config.byokBaseUrl ?? ""}:${config.byokApiKey ?? ""}`;
+  return `byok:${config.byokProviderId ?? ""}:${config.byokType ?? ""}:${config.byokBaseUrl ?? ""}:${config.byokApiKey ?? ""}`;
 }
 
 function resolveCopilotCliPath(): string {

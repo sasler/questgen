@@ -1,9 +1,12 @@
 import { auth } from "./auth";
 import { NextResponse } from "next/server";
 import type { Session } from "next-auth";
+import { GUEST_ID_HEADER } from "./guest";
 
 type SessionWithUser = Pick<Session, "user">;
 const E2E_AUTH_COOKIE = "questgen-e2e-auth";
+const GUEST_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readCookieValue(request: Request, name: string): string | null {
   const nextRequest = request as Request & {
@@ -71,6 +74,34 @@ function buildE2EBypassSession(userId: string): Session {
   };
 }
 
+function buildGuestSession(guestId: string): Session {
+  const ownerId = `guest:${guestId}`;
+  return {
+    guestOwnerId: ownerId,
+    user: {
+      id: ownerId,
+      email: ownerId,
+      name: "Guest Adventurer",
+    },
+    expires: "2999-01-01T00:00:00.000Z",
+  };
+}
+
+function getGuestOwnerId(request: Request): string | null {
+  const guestId = request.headers.get(GUEST_ID_HEADER)?.trim();
+  if (!guestId || !GUEST_ID_PATTERN.test(guestId)) {
+    return null;
+  }
+
+  return `guest:${guestId}`;
+}
+
+function getGuestSession(request: Request): Session | null {
+  const guestOwnerId = getGuestOwnerId(request);
+  if (!guestOwnerId) return null;
+  return buildGuestSession(guestOwnerId.replace(/^guest:/, ""));
+}
+
 export function getE2EBypassSession(request: Request): Session | null {
   if (!isE2EAuthBypassEnabled()) {
     return null;
@@ -95,10 +126,13 @@ export async function resolveRequestSession(
 ): Promise<Session | null> {
   const session = await auth();
   if (session?.user) {
-    return session;
+    const guestOwnerId = request ? getGuestOwnerId(request) : null;
+    return guestOwnerId ? { ...session, guestOwnerId } : session;
   }
 
-  return request ? getE2EBypassSession(request) : null;
+  if (!request) return null;
+
+  return getE2EBypassSession(request) ?? getGuestSession(request);
 }
 
 // Get authenticated session or return null
@@ -124,7 +158,8 @@ export function withAuth(
 }
 
 export function getSessionOwnerIds(session: SessionWithUser): string[] {
-  const ids = [session.user?.id, session.user?.email].filter(
+  const sessionWithGuest = session as SessionWithUser & { guestOwnerId?: string };
+  const ids = [session.user?.id, session.user?.email, sessionWithGuest.guestOwnerId].filter(
     (value): value is string => typeof value === "string" && value.length > 0,
   );
 

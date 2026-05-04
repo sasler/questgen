@@ -40,6 +40,7 @@ describe("settings", () => {
 
     const result = loadSettings();
     expect(result.provider).toBe("byok");
+    expect(result.byokProviderId).toBe("openrouter");
     expect(result.byokType).toBe("openai");
     expect(result.byokApiKey).toBe("sk-test");
     // Defaults still filled in
@@ -74,6 +75,9 @@ describe("settings", () => {
     expect(DEFAULT_SETTINGS.generationModel).toBe("gpt-4.1");
     expect(DEFAULT_SETTINGS.gameplayModel).toBe("gpt-4.1");
     expect(DEFAULT_SETTINGS.provider).toBe("copilot");
+    expect(DEFAULT_SETTINGS.byokProviderId).toBe("openrouter");
+    expect(DEFAULT_SETTINGS.byokType).toBe("openai");
+    expect(DEFAULT_SETTINGS.byokBaseUrl).toBe("https://openrouter.ai/api/v1");
     expect(DEFAULT_SETTINGS.responseLength).toBe("moderate");
   });
 
@@ -81,12 +85,14 @@ describe("settings", () => {
     const flat = {
       ...DEFAULT_SETTINGS,
       provider: "byok" as const,
+      byokProviderId: "openrouter" as const,
       byokType: "openai" as const,
       byokBaseUrl: "https://api.openai.com/v1",
       byokApiKey: "sk-test",
     };
     const result = toGameSettings(flat);
     expect(result.byokConfig).toEqual({
+      providerId: "openrouter",
       type: "openai",
       baseUrl: "https://api.openai.com/v1",
     });
@@ -99,5 +105,20 @@ describe("settings", () => {
     const result = toGameSettings(DEFAULT_SETTINGS);
     expect(result.byokConfig).toBeUndefined();
     expect(result.provider).toBe("copilot");
+  });
+
+  it("migrates legacy BYOK settings to the matching provider preset", () => {
+    storage[SETTINGS_STORAGE_KEY] = JSON.stringify({
+      provider: "byok",
+      byokType: "openai",
+      byokBaseUrl: "https://api.groq.com/openai/v1",
+      byokApiKey: "gsk-test",
+    });
+
+    const result = loadSettings();
+
+    expect(result.byokProviderId).toBe("groq");
+    expect(result.byokType).toBe("openai");
+    expect(result.byokBaseUrl).toBe("https://api.groq.com/openai/v1");
   });
 });

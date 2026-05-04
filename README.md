@@ -20,7 +20,7 @@ without sacrificing the absurd tone.
 - 🖥️ **Authoritative room sidebar** — `RoomInfoPanel` shows relevant room objects and their current state
 - 🧠 **Separate models for generation vs gameplay** — use a powerful model for world-building and a fast one for turns
 - 💾 **Persistent games** — save progress in Upstash Redis, continue where you left off
-- 🔑 **Bring Your Own Key** — use GitHub Copilot (free tier) or your own OpenAI/Anthropic/Azure API key
+- 🔑 **Bring Your Own Key** — use GitHub Copilot or a browser-stored key from OpenRouter, Gemini, Groq, Cerebras, Mistral, or a custom OpenAI-compatible endpoint
 - 🚀 **Hosted on Vercel** — deploy with one click
 
 ## Getting Started
@@ -29,9 +29,28 @@ without sacrificing the absurd tone.
 
 - [Node.js](https://nodejs.org/) 20+
 - A [GitHub](https://github.com) account
-- [GitHub Copilot](https://github.com/features/copilot) (free tier works!) OR your own API key
+- [GitHub Copilot](https://github.com/features/copilot) OR your own API key
 
-### 1. Get GitHub Copilot (Free)
+### 1. Choose an AI Provider
+
+QuestGen supports two player paths:
+
+- **GitHub Copilot** — sign in with GitHub and use your own Copilot account.
+- **BYOK** — open `/settings`, choose a free-provider preset, follow its get-key link, paste the key, then choose models loaded from that provider.
+
+BYOK presets currently include:
+
+| Provider | Key link | Base URL |
+| -------- | -------- | -------- |
+| OpenRouter | <https://openrouter.ai/keys> | `https://openrouter.ai/api/v1` |
+| Google Gemini | <https://aistudio.google.com/apikey> | `https://generativelanguage.googleapis.com/v1beta/openai/` |
+| Groq | <https://console.groq.com/keys> | `https://api.groq.com/openai/v1` |
+| Cerebras | <https://cloud.cerebras.ai> | `https://api.cerebras.ai/v1` |
+| Mistral | <https://console.mistral.ai/api-keys> | `https://api.mistral.ai/v1` |
+
+Free quotas, pricing, and model availability belong to the provider and may change.
+
+### 2. Get GitHub Copilot (Optional)
 
 1. Go to [github.com/features/copilot](https://github.com/features/copilot)
 2. Click **"Get started for free"**
@@ -39,7 +58,7 @@ without sacrificing the absurd tone.
 4. Choose the **Free** plan — it includes access to AI models
 5. That's it! Your GitHub login now works with QuestGen
 
-### 2. Run Locally
+### 3. Run Locally
 
 ```bash
 npm install
@@ -48,18 +67,20 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### 3. Player Flow
+### 4. Player Flow
 
 On a configured deployment, regular players only need to:
 
 1. Open QuestGen
-2. Click **Connect GitHub Copilot**
-3. Approve GitHub access
-4. Start playing with their own Copilot subscription
+2. Choose **Use BYOK** in Settings or click **Connect GitHub Copilot**
+3. For BYOK, paste a provider key and pick models after they load
+4. Start playing with either a guest BYOK save list or their own Copilot subscription
 
-No player should ever need to create OAuth apps or set environment variables.
+No player should ever need to create OAuth apps or set environment variables. BYOK guest games are
+owned by a browser guest ID in localStorage; clearing browser storage removes access to that guest
+save list.
 
-### 4. Owner Setup (for local development or deployment configuration)
+### 5. Owner Setup (for local development or deployment configuration)
 
 If you are deploying QuestGen yourself, the owner-only **Setup Wizard** at `/setup` helps during local development and troubleshooting:
 
@@ -128,7 +149,8 @@ Copilot CLI binary into the server routes that spawn it. If you refactor deploym
 keep those `serverExternalPackages` and `outputFileTracingIncludes` entries intact or Vercel
 may build successfully but fail at runtime or exceed the function size limit.
 
-After this is configured once, players just click **Connect GitHub Copilot** and use their own subscription.
+After this is configured once, players can click **Connect GitHub Copilot** and use their own
+subscription. BYOK still works without GitHub sign-in because game ownership can use a browser guest ID.
 
 ## Architecture
 

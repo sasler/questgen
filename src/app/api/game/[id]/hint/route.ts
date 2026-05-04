@@ -45,8 +45,9 @@ export async function POST(
       settings.provider === "copilot"
         ? { mode: "copilot", githubToken: session.accessToken }
         : {
-            mode: "byok",
-            byokType: settings.byokConfig?.type,
+          mode: "byok",
+          byokProviderId: settings.byokConfig?.providerId,
+          byokType: settings.byokConfig?.type,
             byokBaseUrl: settings.byokConfig?.baseUrl,
             byokApiKey: body.byokApiKey,
           };

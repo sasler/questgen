@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { GameMetadata } from "@/types";
+import { GUEST_ID_STORAGE_KEY } from "@/lib/guest";
 
 // Mock next-auth/react
 const mockUseSession = vi.fn();
@@ -54,6 +55,8 @@ beforeEach(() => {
   vi.restoreAllMocks();
   mockSession();
   global.fetch = vi.fn();
+  localStorage.clear();
+  localStorage.setItem(GUEST_ID_STORAGE_KEY, "550e8400-e29b-41d4-a716-446655440000");
 });
 
 describe("DashboardPage", () => {
@@ -80,6 +83,9 @@ describe("DashboardPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("The Lost Temple")).toBeInTheDocument();
+    });
+    expect(global.fetch).toHaveBeenCalledWith("/api/games", {
+      headers: { "x-questgen-guest-id": "550e8400-e29b-41d4-a716-446655440000" },
     });
     expect(screen.getByText("Space Odyssey")).toBeInTheDocument();
   });
@@ -151,6 +157,7 @@ describe("DashboardPage", () => {
     // Verify the DELETE fetch was called
     expect(global.fetch).toHaveBeenCalledWith("/api/game/del-1", {
       method: "DELETE",
+      headers: { "x-questgen-guest-id": "550e8400-e29b-41d4-a716-446655440000" },
     });
   });
 

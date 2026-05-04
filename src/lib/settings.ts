@@ -1,7 +1,16 @@
+import {
+  DEFAULT_BYOK_PROVIDER_ID,
+  findByokProvider,
+  findByokProviderByBaseUrl,
+  resolveByokProviderDefaults,
+  type ByokProviderId,
+} from "./byok-providers";
+
 export const SETTINGS_STORAGE_KEY = "questgen-settings";
 
 export interface UserSettings {
   provider: "copilot" | "byok";
+  byokProviderId?: ByokProviderId;
   byokType?: "openai" | "azure" | "anthropic";
   byokBaseUrl?: string;
   byokApiKey?: string;
@@ -12,16 +21,38 @@ export interface UserSettings {
 
 export const DEFAULT_SETTINGS: UserSettings = {
   provider: "copilot",
+  byokProviderId: DEFAULT_BYOK_PROVIDER_ID,
+  byokType: "openai",
+  byokBaseUrl: "https://openrouter.ai/api/v1",
   generationModel: "gpt-4.1",
   gameplayModel: "gpt-4.1",
   responseLength: "moderate",
 };
 
+function normalizeSettings(raw: Partial<UserSettings>): UserSettings {
+  const merged: UserSettings = { ...DEFAULT_SETTINGS, ...raw };
+  const selectedProvider =
+    (raw.byokProviderId ? findByokProvider(raw.byokProviderId) : undefined) ??
+    findByokProviderByBaseUrl(raw.byokBaseUrl) ??
+    findByokProvider(merged.byokProviderId);
+
+  if (selectedProvider) {
+    return {
+      ...merged,
+      byokProviderId: selectedProvider.id,
+      byokType: merged.byokType ?? selectedProvider.type,
+      byokBaseUrl: merged.byokBaseUrl || selectedProvider.baseUrl,
+    };
+  }
+
+  return resolveByokProviderDefaults(merged);
+}
+
 export function loadSettings(): UserSettings {
   if (typeof window === "undefined") return { ...DEFAULT_SETTINGS };
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) return normalizeSettings(JSON.parse(raw) as Partial<UserSettings>);
   } catch {
     /* ignore corrupt data */
   }
@@ -45,6 +76,7 @@ export function toGameSettings(settings: UserSettings): Record<string, unknown> 
   };
   if (settings.provider === "byok" && settings.byokType) {
     base.byokConfig = {
+      providerId: settings.byokProviderId,
       type: settings.byokType,
       baseUrl: settings.byokBaseUrl,
     };

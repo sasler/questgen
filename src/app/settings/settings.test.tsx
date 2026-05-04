@@ -226,9 +226,85 @@ describe("SettingsPage", () => {
 
     expect(screen.getByLabelText(/api key/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/base url/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/openai/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/anthropic/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/azure/i)).toBeInTheDocument();
+    expect(screen.getByText(/sdk provider type/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/anthropic/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/azure/i)).not.toBeInTheDocument();
+  });
+
+  it("shows free BYOK provider presets with get-key links", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/bring your own key/i));
+
+    expect(screen.getByLabelText(/openrouter/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/google gemini/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/groq/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/cerebras/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/mistral/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /get openrouter key/i })).toHaveAttribute(
+      "href",
+      "https://openrouter.ai/keys",
+    );
+  });
+
+  it("loads BYOK models with a POST body and API key header after key entry", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/copilot/status") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => connectedStatus,
+        });
+      }
+
+      if (url === "/api/models" && init?.method === "POST") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            models: [
+              {
+                id: "openrouter/free",
+                name: "OpenRouter Free Router",
+                provider: "openrouter",
+                recommended: "gameplay",
+              },
+            ],
+            recommended: {
+              generation: null,
+              gameplay: {
+                id: "openrouter/free",
+                name: "OpenRouter Free Router",
+                provider: "openrouter",
+              },
+            },
+          }),
+        });
+      }
+
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ models: mockModels }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<SettingsPage />);
+
+    await user.click(await screen.findByLabelText(/bring your own key/i));
+    await user.type(screen.getByLabelText(/api key/i), "sk-or-test");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/models",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({ "x-byok-api-key": "sk-or-test" }),
+          body: expect.stringContaining('"byokProviderId":"openrouter"'),
+        }),
+      );
+    });
+    expect((await screen.findAllByText(/openrouter free router/i)).length).toBeGreaterThan(0);
   });
 
   it("hides BYOK fields when Copilot is selected", async () => {

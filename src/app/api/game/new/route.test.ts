@@ -16,10 +16,10 @@ import { POST } from "./route";
 const mockedAuth = vi.mocked(auth);
 const mockedGenerateWorld = vi.mocked(generateWorld);
 
-function makeRequest(body?: unknown): NextRequest {
+function makeRequest(body?: unknown, headers: Record<string, string> = {}): NextRequest {
   return new NextRequest("http://localhost:3000/api/game/new", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 }
@@ -198,6 +198,53 @@ describe("POST /api/game/new", () => {
         mode: "byok",
         byokType: "openai",
         byokBaseUrl: "https://api.openai.com/v1",
+        byokApiKey: "sk-test-key",
+      },
+      undefined,
+      undefined,
+      expect.any(Function),
+    );
+  });
+
+  it("allows unauthenticated BYOK game creation with a guest owner header", async () => {
+    mockedAuth.mockResolvedValue(null as never);
+    mockedGenerateWorld.mockResolvedValue({
+      success: true,
+      gameId: "guest-game",
+    });
+
+    const byokSettings = {
+      ...validSettings,
+      provider: "byok" as const,
+      byokConfig: {
+        providerId: "openrouter",
+        type: "openai" as const,
+        baseUrl: "https://openrouter.ai/api/v1",
+      },
+    };
+
+    const res = await POST(
+      makeRequest(
+        {
+          request: validRequest,
+          settings: byokSettings,
+          byokApiKey: "sk-test-key",
+        },
+        { "x-questgen-guest-id": "550e8400-e29b-41d4-a716-446655440000" },
+      ),
+    );
+    await res.text();
+
+    expect(res.status).toBe(200);
+    expect(mockedGenerateWorld).toHaveBeenCalledWith(
+      validRequest,
+      byokSettings,
+      "guest:550e8400-e29b-41d4-a716-446655440000",
+      {
+        mode: "byok",
+        byokProviderId: "openrouter",
+        byokType: "openai",
+        byokBaseUrl: "https://openrouter.ai/api/v1",
         byokApiKey: "sk-test-key",
       },
       undefined,

@@ -45,14 +45,13 @@ export default function GuidePage() {
         <pre className="text-[var(--terminal-amber)] glow-text-amber text-xs sm:text-sm leading-tight inline-block text-left">
 {`
  ╔═══════════════════════════════════════════════╗
- ║  THE HITCHHIKER'S GUIDE TO GITHUB COPILOT    ║
+ ║  THE HITCHHIKER'S GUIDE TO AI PROVIDERS      ║
  ║  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~   ║
  ║  A QuestGen Companion Document                ║
  ╚═══════════════════════════════════════════════╝`}
         </pre>
         <p className="mt-4 text-[var(--terminal-green)] glow-text text-sm">
-          DON&apos;T PANIC. Getting GitHub Copilot is easier than finding
-          a decent restaurant at the end of the universe.
+          DON&apos;T PANIC. QuestGen works with GitHub Copilot or a browser-stored BYOK API key.
         </p>
       </header>
 
@@ -61,8 +60,9 @@ export default function GuidePage() {
         <p className="text-sm leading-relaxed">
           GitHub Copilot is an AI coding assistant that — among its many
           talents — provides access to a variety of large language models.
-          QuestGen piggybacks on this so you don&apos;t need to sign up for
-          separate AI services or manage your own API keys.
+          QuestGen can piggyback on this so you don&apos;t need to sign up for
+          separate AI services or manage your own API keys. BYOK is the alternate path when you
+          prefer a free API provider account.
         </p>
         <p className="text-sm leading-relaxed mt-2 text-[var(--terminal-dim)]">
           Think of it as a towel: the most massively useful thing an
@@ -71,7 +71,7 @@ export default function GuidePage() {
       </Section>
 
       {/* Step-by-Step Signup */}
-      <Section title="STEP-BY-STEP SIGNUP (4 EASY STEPS)">
+      <Section title="GITHUB COPILOT SIGNUP (4 EASY STEPS)">
         <div className="space-y-4 text-sm">
           <div>
             <p className="text-[var(--terminal-amber)]">
@@ -129,14 +129,17 @@ export default function GuidePage() {
       </Section>
 
       {/* BYOK Alternative */}
-      <Section title="BYOK — BRING YOUR OWN KEY">
+      <Section title="BYOK — FREE PROVIDER PRESETS">
         <p className="text-sm leading-relaxed">
-          If you already have an OpenAI, Anthropic, or Azure account, you can
-          use your own API key instead. Go to Settings to configure.
+          Go to Settings, choose Bring Your Own Key, pick OpenRouter, Google Gemini, Groq,
+          Cerebras, Mistral, or a custom OpenAI-compatible endpoint, then open the visible
+          get-key link for that provider. After you paste the key, QuestGen loads that
+          provider&apos;s model list and lets you choose separate generation and gameplay models.
         </p>
         <p className="text-sm leading-relaxed mt-2 text-[var(--terminal-dim)]">
-          This is the option for seasoned galactic hitchhikers who prefer
-          to carry their own towel rather than borrowing one from the ship.
+          BYOK keys are stored in your browser only. Guest BYOK games are saved under a browser
+          guest ID, so clearing localStorage also clears your access to that guest save list.
+          Free quotas and model availability can change at the provider.
         </p>
       </Section>
 
@@ -171,9 +174,8 @@ export default function GuidePage() {
               &quot;What if I run out of completions?&quot;
             </p>
             <p className="ml-4 mt-1">
-              You have two options: switch to BYOK (bring your own key) and
-              configure a direct API key in Settings, or simply wait for your
-              monthly allocation to reset. Time, as they say, is an illusion.
+              Switch to BYOK and configure one of the free-provider presets in Settings, or
+              wait for your monthly allocation to reset. Time, as they say, is an illusion.
               Lunchtime doubly so.
             </p>
           </div>

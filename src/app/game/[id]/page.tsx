@@ -13,6 +13,7 @@ import {
 import { getAvailableExits } from "@/engine";
 import { renderEntityTables, renderFullMap } from "@/lib/progression";
 import { loadSettings } from "@/lib/settings";
+import { getGuestRequestHeaders } from "@/lib/guest";
 import type {
   GameState,
   GameWorld,
@@ -62,7 +63,7 @@ export default function GamePage() {
 
     async function loadGame() {
       try {
-        const res = await fetch(`/api/game/${gameId}`);
+        const res = await fetch(`/api/game/${gameId}`, { headers: getGuestRequestHeaders() });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || `Failed to load game (${res.status})`);
@@ -114,7 +115,7 @@ export default function GamePage() {
 
         const res = await fetch(`/api/game/${gameId}/intro`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...getGuestRequestHeaders() },
           body: JSON.stringify(body),
         });
 
@@ -262,7 +263,7 @@ export default function GamePage() {
 
             const res = await fetch(`/api/game/${gameId}/hint`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", ...getGuestRequestHeaders() },
               body: JSON.stringify(body),
             });
 
@@ -310,7 +311,7 @@ export default function GamePage() {
 
             const res = await fetch(`/api/game/${gameId}/admin`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", ...getGuestRequestHeaders() },
               body: JSON.stringify(body),
             });
 
@@ -349,7 +350,7 @@ export default function GamePage() {
 
         const res = await fetch(`/api/game/${gameId}/turn`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...getGuestRequestHeaders() },
           body: JSON.stringify({ input, turnId, byokApiKey, stream: true }),
         });
 
@@ -417,7 +418,9 @@ export default function GamePage() {
               throw new Error("Turn stream finished without a final result");
             }
 
-            const recoveryRes = await fetch(`/api/game/${gameId}`);
+            const recoveryRes = await fetch(`/api/game/${gameId}`, {
+              headers: getGuestRequestHeaders(),
+            });
             if (!recoveryRes.ok) {
               throw new Error("Turn stream finished without a final result");
             }
@@ -456,7 +459,9 @@ export default function GamePage() {
 
         // Refetch world if it changed
         if (finalResult.worldChanged && !finalResult.recoveredWorld) {
-          const worldRes = await fetch(`/api/game/${gameId}`);
+          const worldRes = await fetch(`/api/game/${gameId}`, {
+            headers: getGuestRequestHeaders(),
+          });
           if (worldRes.ok) {
             const fullState = await worldRes.json();
             setWorld(fullState.world);

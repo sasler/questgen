@@ -156,6 +156,7 @@ export const GameSizeSchema = z.enum(["small", "medium", "large", "epic"]);
 // ── GameSettings ────────────────────────────────────────────────────
 
 export const ByokConfigSchema = z.object({
+  providerId: z.string().optional(),
   type: z.enum(["openai", "azure", "anthropic"]),
   baseUrl: z.string(),
 });

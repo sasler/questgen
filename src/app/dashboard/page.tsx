@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { PanelFrame } from "@/components";
+import { getGuestRequestHeaders } from "@/lib/guest";
 import type { GameMetadata } from "@/types";
 
 function relativeTime(timestamp: number): string {
@@ -99,7 +100,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/games")
+    fetch("/api/games", { headers: getGuestRequestHeaders() })
       .then((r) => r.json())
       .then((data) => setGames(data.games ?? []))
       .catch(() => setGames([]))
@@ -107,7 +108,10 @@ export default function DashboardPage() {
   }, []);
 
   const handleDelete = useCallback(async (id: string) => {
-    const res = await fetch(`/api/game/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/game/${id}`, {
+      method: "DELETE",
+      headers: getGuestRequestHeaders(),
+    });
     if (res.ok) {
       setGames((prev) => prev.filter((g) => g.id !== id));
     }
@@ -152,7 +156,7 @@ export default function DashboardPage() {
           href="/guide"
           className="border border-[#ffb000] text-[#ffb000] px-4 py-2 text-sm font-bold hover:bg-[#ffb000] hover:text-[#0a0a0a] transition-colors"
         >
-          [ How to Get Copilot ]
+          [ Provider Guide ]
         </Link>
       </nav>
 

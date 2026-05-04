@@ -6,7 +6,7 @@ describe("Guide Page", () => {
   it("renders the page title", () => {
     render(<GuidePage />);
     expect(
-      screen.getByText(/hitchhiker.*guide.*github copilot/i)
+      screen.getByText(/hitchhiker.*guide.*ai providers/i)
     ).toBeInTheDocument();
   });
 
@@ -23,9 +23,9 @@ describe("Guide Page", () => {
 
   it("contains BYOK alternative section", () => {
     render(<GuidePage />);
-    expect(screen.getByText(/BYOK — BRING YOUR OWN KEY/)).toBeInTheDocument();
+    expect(screen.getByText(/BYOK — FREE PROVIDER PRESETS/)).toBeInTheDocument();
     expect(
-      screen.getByText(/use your own API key instead/i)
+      screen.getByText(/choose Bring Your Own Key/i)
     ).toBeInTheDocument();
   });
 

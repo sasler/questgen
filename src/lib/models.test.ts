@@ -21,6 +21,7 @@ function makeMockProvider(models: AIModelInfo[]): IAIProvider {
 describe("listAvailableModels", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("delegates to provider.listModels in copilot mode", async () => {
@@ -60,50 +61,127 @@ describe("listAvailableModels", () => {
     expect(unknown?.recommended).toBeUndefined();
   });
 
-  it("returns correct hardcoded list for BYOK openai", async () => {
+  it("loads BYOK models from an OpenAI-compatible /models endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          { id: "openrouter/free", name: "OpenRouter Free Router" },
+          { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
     const config: AIProviderConfig = {
       mode: "byok",
       byokType: "openai",
-      byokBaseUrl: "https://api.openai.com",
-      byokApiKey: "sk-test",
+      byokProviderId: "openrouter",
+      byokBaseUrl: "https://openrouter.ai/api/v1",
+      byokApiKey: "sk-or-test",
     };
     const result = await listAvailableModels(config);
 
-    expect(result.models.length).toBe(5);
-    expect(result.models.every((m) => m.provider === "openai")).toBe(true);
-    expect(result.models.find((m) => m.id === "gpt-4.1")).toBeDefined();
-    expect(result.models.find((m) => m.id === "gpt-4.1-mini")).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledWith("https://openrouter.ai/api/v1/models", {
+      headers: { Authorization: "Bearer sk-or-test" },
+    });
+    expect(result.models).toEqual([
+      {
+        id: "openrouter/free",
+        name: "OpenRouter Free Router",
+        provider: "openrouter",
+        recommended: "gameplay",
+      },
+      {
+        id: "google/gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        provider: "openrouter",
+      },
+    ]);
     expect(result.error).toBeUndefined();
   });
 
-  it("returns correct hardcoded list for BYOK anthropic", async () => {
+  it("loads Gemini BYOK models from the Gemini model listing API", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        models: [
+          {
+            name: "models/gemini-2.5-flash",
+            displayName: "Gemini 2.5 Flash",
+            supportedGenerationMethods: ["generateContent"],
+          },
+          {
+            name: "models/text-embedding-004",
+            displayName: "Text Embedding 004",
+            supportedGenerationMethods: ["embedContent"],
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
     const config: AIProviderConfig = {
       mode: "byok",
-      byokType: "anthropic",
-      byokBaseUrl: "https://api.anthropic.com",
-      byokApiKey: "sk-test",
+      byokType: "openai",
+      byokProviderId: "gemini",
+      byokBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+      byokApiKey: "gemini-key",
     };
     const result = await listAvailableModels(config);
 
-    expect(result.models.length).toBe(2);
-    expect(result.models.every((m) => m.provider === "anthropic")).toBe(true);
-    expect(result.models.find((m) => m.id === "claude-sonnet-4-20250514")).toBeDefined();
-    expect(result.models.find((m) => m.id === "claude-haiku-3-5-20241022")).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://generativelanguage.googleapis.com/v1beta/models?key=gemini-key",
+    );
+    expect(result.models).toEqual([
+      {
+        id: "gemini-2.5-flash",
+        name: "Gemini 2.5 Flash",
+        provider: "gemini",
+        recommended: "generation",
+      },
+    ]);
     expect(result.error).toBeUndefined();
   });
 
-  it("returns correct hardcoded list for BYOK azure", async () => {
+  it("falls back to curated BYOK preset models when live discovery fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: async () => "Unauthorized",
+      }),
+    );
+
     const config: AIProviderConfig = {
       mode: "byok",
-      byokType: "azure",
-      byokBaseUrl: "https://my.azure.endpoint",
-      byokApiKey: "key",
+      byokType: "openai",
+      byokProviderId: "cerebras",
+      byokBaseUrl: "https://api.cerebras.ai/v1",
+      byokApiKey: "csk-test",
     };
     const result = await listAvailableModels(config);
 
-    expect(result.models.length).toBe(2);
-    expect(result.models.every((m) => m.provider === "azure")).toBe(true);
-    expect(result.error).toBeUndefined();
+    expect(result.models.some((m) => m.id === "gpt-oss-120b")).toBe(true);
+    expect(result.error).toMatch(/401/);
+  });
+
+  it("rejects model discovery when the selected preset base URL is spoofed", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await listAvailableModels({
+      mode: "byok",
+      byokType: "openai",
+      byokProviderId: "openrouter",
+      byokBaseUrl: "http://127.0.0.1:8080",
+      byokApiKey: "sk-or-test",
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.models.some((model) => model.id === "openrouter/free")).toBe(true);
+    expect(result.error).toMatch(/does not match/i);
   });
 
   it("does not call provider.listModels in byok mode", async () => {
@@ -121,10 +199,11 @@ describe("listAvailableModels", () => {
     expect(provider.listModels).not.toHaveBeenCalled();
   });
 
-  it("returns empty list with error for unknown BYOK type", async () => {
+  it("returns empty list with error for unknown BYOK provider", async () => {
     const config: AIProviderConfig = {
       mode: "byok",
-      byokType: "unknown-provider" as AIProviderConfig["byokType"],
+      byokType: "openai",
+      byokProviderId: "unknown-provider",
     };
     const result = await listAvailableModels(config);
 
